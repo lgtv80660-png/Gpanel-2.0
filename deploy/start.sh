@@ -13,5 +13,8 @@ php /opt/gpanel/deploy/initialize-test.php
 php /var/www/html/migrate_v2.php --apply --backup-confirmed
 php /var/www/html/migrate_v2.php --apply --backup-confirmed
 php /opt/gpanel/deploy/verify-test.php
+# Enforce the single PHP-compatible MPM at runtime as well as image build.
+a2dismod mpm_event mpm_worker
+a2enmod mpm_prefork
 apache2ctl -t
 exec apache2-foreground
