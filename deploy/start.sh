@@ -17,5 +17,5 @@ php /opt/gpanel/deploy/verify-test.php
 # Enforce the single PHP-compatible MPM at runtime as well as image build.
 a2dismod mpm_event mpm_worker
 a2enmod mpm_prefork
-apache2ctl -t
-exec apache2-foreground
+apache2ctl -t -f /opt/gpanel/deploy/httpd.conf
+exec apache2-foreground -f /opt/gpanel/deploy/httpd.conf
