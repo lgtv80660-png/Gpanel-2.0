@@ -1,0 +1,5 @@
+IPTV Panel V5.1
+
+Fix: deleting a supplier now deletes its streams AND categories in one DB transaction.
+Existing orphan categories from suppliers already deleted can be cleaned by opening migrate.php once.
+No other supplier content is touched.

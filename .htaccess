@@ -1,0 +1,14 @@
+Options -MultiViews
+RewriteEngine On
+RewriteBase /gpanel-test/
+
+# Playlist M3U
+
+# Live
+RewriteRule ^live/([^/]+)/([^/]+)/([^/]+)\.(.*)$ live.php?username=$1&password=$2&stream=$3&extension=$4 [L,QSA]
+
+# Films
+RewriteRule ^movie/([^/]+)/([^/]+)/([^/]+)\.(.*)$ vod.php?username=$1&password=$2&stream=$3&extension=$4 [L,QSA]
+
+# Séries
+RewriteRule ^series/([^/]+)/([^/]+)/([^/]+)\.(.*)$ series.php?username=$1&password=$2&stream=$3&extension=$4 [L,QSA]

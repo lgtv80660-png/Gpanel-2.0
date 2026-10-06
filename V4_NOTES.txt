@@ -1,0 +1,29 @@
+IPTV PANEL V4 - STALKER + TARGETED IMPORT
+
+Changes:
+- Stalker/MAG provider support: Host + MAC stored and editable.
+- Stalker handshake + token handling.
+- Stalker get_genres + get_all_channels import.
+- Stalker create_link resolution at playback time.
+- Supports common /c/portal.php and /stalker_portal/server/load.php layouts.
+- Stalker direct_source can be either a direct HTTP(S) URL or a portal command.
+- Targeted imports only affect the selected provider.
+- Existing visibility filters are preserved using remote IDs when available.
+- Added streams.remote_stream_id for stable filter preservation.
+- Import is aborted before DB deletion if remote validation fails.
+- M3U import support retained/improved.
+- Xtream Live/VOD/Series support retained.
+- Railway router support retained for /live, /movie and /series URLs.
+
+Deployment:
+- Deploy this ZIP as the full project.
+- Procfile remains: web: php -S 0.0.0.0:$PORT router.php
+- No manual SQL is normally required: importer/admin perform idempotent ALTER TABLE migrations.
+
+Stalker source example:
+Host: http://example.com:8080
+MAC: 00:1A:79:XX:XX:XX
+Type: Portail Stalker (MAC)
+
+Playback flow:
+client -> /live/... -> live.php -> handshake -> create_link -> 302 to provider stream

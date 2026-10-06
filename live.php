@@ -1,0 +1,58 @@
+<?php
+require_once __DIR__ . '/config.php';
+
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, HEAD, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+
+$user = trim(strtolower((string)($_GET['username'] ?? '')));
+$pass = trim((string)($_GET['password'] ?? ''));
+$stream_id = trim((string)($_GET['stream'] ?? ''));
+$extension = strtolower(trim((string)($_GET['extension'] ?? 'ts')));
+$extension = preg_replace('/[^a-z0-9]/i', '', $extension) ?: 'ts';
+
+$stmt = $pdo->prepare('SELECT id FROM clients WHERE LOWER(username) = ? AND password = ? AND active = 1 LIMIT 1');
+$stmt->execute([$user, $pass]);
+if (!$stmt->fetch()) { http_response_code(401); exit('Authentication failed'); }
+
+$stmt = $pdo->prepare("SELECT s.*, f.type, f.url_base, f.user, f.pass, f.mac_address
+                       FROM streams s INNER JOIN fournisseurs f ON s.fournisseur_id = f.id
+                       WHERE s.stream_id = ? AND s.stream_type = 'live' AND s.visible = 1 LIMIT 1");
+$stmt->execute([$stream_id]);
+$data = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$data) { http_response_code(404); exit('Live stream not found'); }
+
+if ($data['type'] === 'xtream') {
+    $url_finale = rtrim($data['url_base'], '/') . '/live/'
+        . rawurlencode((string)$data['user']) . '/'
+        . rawurlencode((string)$data['pass']) . '/'
+        . rawurlencode((string)$data['direct_source']) . '.' . $extension;
+} elseif ($data['type'] === 'm3u') {
+    $url_finale = $data['direct_source'];
+} elseif ($data['type'] === 'stalker') {
+    $mac = stalker_normalize_mac($data['mac_address'] ?? '');
+    if ($mac === '') { http_response_code(502); exit('Stalker MAC address is missing'); }
+
+    $portal = stalker_normalize_portal((string)$data['url_base']);
+    $hs = stalker_handshake($portal, $mac);
+    if (!$hs['ok']) { http_response_code(502); exit('Stalker handshake failed: ' . $hs['error']); }
+
+    $resolved = stalker_resolve_stream($portal, $mac, $hs['token'], (string)$data['direct_source'], $hs['path']);
+    if (!$resolved['ok']) {
+        http_response_code(502);
+        exit('Stalker stream resolution failed: ' . ($resolved['error'] ?? 'unknown error'));
+    }
+    $url_finale = $resolved['url'];
+} else {
+    http_response_code(502); exit('Unsupported provider type');
+}
+
+if (empty($url_finale) || !preg_match('#^https?://#i', $url_finale)) {
+    http_response_code(502); exit('Invalid stream URL');
+}
+
+header('Location: ' . $url_finale, true, 302);
+exit;
+?>

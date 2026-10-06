@@ -1,0 +1,24 @@
+IPTV PANEL V5
+
+Main fixes:
+- stream_icon and direct_source are TEXT: long Xtream URLs no longer fail with MySQL 1406.
+- VOD uses the real container_extension from the provider. No forced .mp4.
+- Series uses the stored episode extension.
+- Admin/editor previews use the stored extension.
+- Added VOD metadata cache: plot, cast, director, genre, release date, rating, backdrop, trailer, runtime.
+- get_vod_info is Xtream-compatible and lazily enriches metadata from the remote provider.
+- get_vod_streams exposes stored metadata and real extension.
+- Series metadata is cached by get_series_info.
+- Import is provider-scoped and content-type transactional. A failed Live/VOD/Series import rolls back only that type and preserves the previous data.
+- Existing Masquer/Afficher visibility is matched by remote ID and preserved.
+- Stalker, M3U, Xtream, Live, VOD and Series support from V4 is retained.
+- Railway router remains enabled for /live, /movie and /series URLs.
+
+Deployment:
+1. Deploy this whole ZIP.
+2. Open admin.php once, or migrate.php once, to apply schema migrations.
+3. Run importer.php for the provider you want to refresh.
+4. Existing filters are preserved.
+5. For VOD metadata, Xtream clients that call get_vod_info trigger a single remote metadata request when local details are missing.
+
+No manual SQL is required. If you prefer manual verification, streams.stream_icon and streams.direct_source should be TEXT.

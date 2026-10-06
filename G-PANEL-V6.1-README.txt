@@ -1,0 +1,16 @@
+G-PANEL V6.1
+
+UI upgrade based on V6.1
+- Dark mode with white G-PANEL wordmark
+- Light mode with blue G-PANEL wordmark
+- Theme switcher stored in browser localStorage
+- Languages: English, Arabic, Russian, Turkish, plus French
+- Arabic RTL layout
+- Language selection stored in browser localStorage
+- UI assets: assets/g-panel-logo.png (light), assets/g-panel-logo-dark.png (dark), assets/g-panel-mark.png
+- UI logic: assets/gpanel-ui.js
+- Existing V5.1/V6 backend functionality preserved
+
+To replace the logo later, replace the PNG assets while keeping the same filenames.
+
+V6.3: language selector and dark/light theme toggle moved into the sidebar for better UX.
