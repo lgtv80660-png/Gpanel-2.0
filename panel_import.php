@@ -8,8 +8,8 @@ function panel_import_lock(PDO $pdo, int $fid, bool $release = false): void {
 }
 function panel_import_require_transactions(PDO $pdo): void {
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') return;
-    $rows = $pdo->query("SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('streams','categories')")->fetchAll(PDO::FETCH_KEY_PAIR);
-    if (count($rows) !== 2 || array_filter($rows, function ($engine) { return strcasecmp($engine, 'InnoDB') !== 0; })) {
+    $rows = $pdo->query("SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('streams','categories','import_exclusions')")->fetchAll(PDO::FETCH_KEY_PAIR);
+    if (count($rows) !== 3 || array_filter($rows, function ($engine) { return strcasecmp($engine, 'InnoDB') !== 0; })) {
         throw new RuntimeException('Run the reviewed V2 migration on a backup before importing.');
     }
 }
@@ -66,10 +66,57 @@ function infer_ext_from_url($url) {
     $ext = pathinfo($path, PATHINFO_EXTENSION);
     return normalize_ext($ext, null);
 }
+// Shared identities: selection and exclusions must match the incremental importer.
+function panel_import_identity(array $s, string $type): string {
+    if ($type === 'm3u') return 'm3u:'.hash('sha256', (string)($s['url'] ?? ''));
+    if ($type === 'stalker') return (string)($s['id'] ?? $s['ch_id'] ?? $s['cmd'] ?? '');
+    return (string)($s['stream_id'] ?? $s['series_id'] ?? '');
+}
+function panel_import_category(array $s, string $type): string {
+    if ($type === 'm3u') return (string)($s['group'] ?? 'Général');
+    return (string)($s['category_id'] ?? $s['tv_genre_id'] ?? $s['genre_id'] ?? $s['cat_id'] ?? '');
+}
+function panel_import_container(array $s, string $type): string {
+    $ext = normalize_ext($s['container_extension'] ?? $s['container_ext'] ?? $s['ext'] ?? null);
+    if (!$ext) $ext = infer_ext_from_url($s['url'] ?? $s['direct_source'] ?? '');
+    // A codec label is never a container. Unknown extensions stay unknown.
+    return in_array($ext, ['mp4','mkv','avi','ts','m2ts','mov','wmv','flv','webm','m4v','mpg','mpeg','m3u8'], true) ? $ext : 'unknown';
+}
+function panel_import_quality(array $s): string {
+    $video = $s['video'] ?? $s['info']['video'] ?? [];
+    $height = $s['height'] ?? (is_array($video) ? ($video['height'] ?? null) : null);
+    if (is_numeric($height) && (int)$height > 0) {
+        if ((int)$height >= 2160) return '4K';
+        if ((int)$height >= 1080) return '1080p';
+        if ((int)$height >= 720) return '720p';
+        return 'unknown';
+    }
+    // Only explicit resolution metadata, never names, codecs or bitrate guesses.
+    $resolution = (string)($s['resolution'] ?? $s['quality'] ?? '');
+    if (preg_match('/^(?:3840x2160|4096x2160|2160p|4k)$/i', $resolution)) return '4K';
+    if (preg_match('/^(?:1920x1080|1080p)$/i', $resolution)) return '1080p';
+    if (preg_match('/^(?:1280x720|720p)$/i', $resolution)) return '720p';
+    return 'unknown';
+}
+function panel_import_exclusions(PDO $pdo, int $fid, string $kind): array {
+    $stmt = $pdo->prepare('SELECT remote_stream_id FROM import_exclusions WHERE fournisseur_id = ? AND content_type = ?');
+    $stmt->execute([$fid, $kind]);
+    return array_fill_keys($stmt->fetchAll(PDO::FETCH_COLUMN), true);
+}
+function panel_import_decisions(PDO $pdo, int $fid, string $kind, array $decisions): void {
+    $delete = $pdo->prepare('DELETE FROM import_exclusions WHERE fournisseur_id = ? AND content_type = ? AND remote_stream_id = ?');
+    $insert = $pdo->prepare('INSERT INTO import_exclusions (fournisseur_id,content_type,remote_stream_id) VALUES (?,?,?)');
+    foreach ($decisions as $rid => $decision) {
+        if (!in_array($decision, ['exclude','import'], true) || strlen((string)$rid) > 255 || (string)$rid === '') throw new InvalidArgumentException('Invalid decision');
+        $delete->execute([$fid, $kind, (string)$rid]);
+        if ($decision === 'exclude') $insert->execute([$fid, $kind, (string)$rid]);
+    }
+}
 function process_and_insert_streams($pdo, $fid, $kind, $type, $items, $catMap) {
     if (empty($items)) return 0;
     
     $known = panel_import_existing($pdo, (int)$fid, $kind);
+    $excluded = panel_import_exclusions($pdo, (int)$fid, $kind);
     $seen = [];
     $refresh = $pdo->prepare('UPDATE streams SET direct_source = ?, remote_stream_id = ? WHERE stream_id = ? AND fournisseur_id = ? AND stream_type = ?');
     $count = 0;
@@ -93,6 +140,7 @@ function process_and_insert_streams($pdo, $fid, $kind, $type, $items, $catMap) {
         }
         
         if (!isset($catMap[$catRid]) || $name==='' || $source==='') continue;
+        if (isset($excluded[$rid])) continue;
         
         if (isset($seen[$rid])) continue;
         $seen[$rid] = true;

@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.request import Request, build_opener, HTTPCookieProcessor
 from urllib.error import HTTPError, URLError
 
-ap=argparse.ArgumentParser();ap.add_argument('--php',required=True);ap.add_argument('--ext',required=True);ap.add_argument('--port',type=int,default=18976);ap.add_argument('--keep',action='store_true');ap.add_argument('--ui',action='store_true');args=ap.parse_args()
+ap=argparse.ArgumentParser();ap.add_argument('--php',required=True);ap.add_argument('--ext',required=True);ap.add_argument('--port',type=int,default=18976);ap.add_argument('--keep',action='store_true');ap.add_argument('--ui',action='store_true');ap.add_argument('--selective',action='store_true');args=ap.parse_args()
 source=Path(__file__).resolve().parents[1]
 tmp=Path(tempfile.mkdtemp(prefix='panel-regression-'));web=tmp/'web';web.mkdir();state=tmp/'state';state.mkdir()
 for f in source.glob('*.php'):shutil.copy2(f,web/f.name)
@@ -18,6 +18,12 @@ importer=re.sub(r'function fetch_data_stream\([^\n]*\) \{.*?\n\}', '''function f
     return '[]';
 }''',importer,flags=re.S)
 (web/'importer.php').write_text(importer,encoding='utf-8')
+selective=(web/'import_selective.php').read_text(encoding='utf-8')
+selective=re.sub(r'function sel_fetch\([^\n]*\) \{.*?\n\}', '''function sel_fetch($url) {
+    if (strpos($url, 'categories') !== false) return '[{"category_id":"remote-10","category_name":"Visible"}]';
+    return '[{"stream_id":"remote-20","name":"Provider rename","category_id":"remote-10","container_extension":"mp4","height":1080},{"stream_id":"rejected","name":"Rejected","category_id":"remote-10","container_extension":"mkv"}]';
+}''',selective,flags=re.S)
+(web/'import_selective.php').write_text(selective,encoding='utf-8')
 api=(web/'player_api.php').read_text(encoding='utf-8')
 api=re.sub(r'function fetch_data_proxy\([^\n]*\) \{.*?\n\}', '''function fetch_data_proxy($url) {
     file_put_contents(getenv('FIXTURE_UPSTREAM_COUNT'), 'x', FILE_APPEND);
@@ -27,6 +33,7 @@ api=re.sub(r'function fetch_data_proxy\([^\n]*\) \{.*?\n\}', '''function fetch_d
 db=tmp/'fixture.sqlite';conn=sqlite3.connect(db)
 conn.executescript('''
 CREATE TABLE admins(id INTEGER PRIMARY KEY,username TEXT,password TEXT);
+CREATE TABLE import_exclusions(fournisseur_id INTEGER,content_type TEXT,remote_stream_id TEXT,PRIMARY KEY(fournisseur_id,content_type,remote_stream_id));
 INSERT INTO admins VALUES(1,'fixture-admin','fixture-password'),(2,'fixture-restricted','fixture-password');
 CREATE TABLE clients(id INTEGER PRIMARY KEY,username TEXT,password TEXT,active INTEGER DEFAULT 1);
 INSERT INTO clients VALUES(1,'Visible','fixture-client',1);
@@ -55,7 +62,7 @@ echo json_encode(['csrf'=>$_SESSION['panel_csrf'],'lang'=>panel_language()]);
 env=os.environ.copy();env.update(PANEL_COOKIE_SECURE='0',PANEL_STATE_DIR=str(state),FIXTURE_DB=str(db),FIXTURE_DB_TOUCH=str(tmp/'db-touch'),PANEL_ADMIN_PERMISSIONS=json.dumps({'1':['panel:read','panel:manage','catalog:edit','catalog:import','cache:revalidate'],'2':['panel:read']}),PANEL_REVALIDATE_URL='',PANEL_REVALIDATE_SECRET='')
 env.update(FIXTURE_UPSTREAM_COUNT=str(tmp/'upstream-count'),FIXTURE_UPSTREAM_JSON=str(tmp/'upstream.json'))
 (tmp/'upstream.json').write_text(json.dumps({'episodes':{'1':[{'id':'ep-visible','title':'Remote title','container_extension':'mp4'},{'id':'ep-hidden','title':'Hidden remote'},{'id':'ep-new','title':'New episode','container_extension':'mkv'}]},'info':{'name':'Remote series','cover':'Remote cover','plot':'Remote plot'},'seasons':[]}),encoding='utf-8')
-php=[str(Path(args.php).resolve()),'-d','extension_dir='+str(Path(args.ext).resolve()),'-d','extension=pdo_sqlite']
+php=[str(Path(args.php).resolve()),'-d','extension_dir='+str(Path(args.ext).resolve()),'-d','extension=pdo_sqlite','-d','extension=mbstring']
 base=f'http://127.0.0.1:{args.port}'
 log=(tmp/'server.log').open('wb');server=subprocess.Popen(php+['-S',f'127.0.0.1:{args.port}','-t',str(web)],env=env,stdout=log,stderr=log)
 def client():return build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))
@@ -78,15 +85,15 @@ try:
   try:request(anonymous,'/__fixture.php');break
   except URLError:time.sleep(.1)
  anonymous=client()
- for route in ['editor.php','importer.php','revalidate_proxy.php','panel_language.php','panel_diagnostics.php']:
+ for route in ['editor.php','importer.php','import_selective.php','revalidate_proxy.php','panel_language.php','panel_diagnostics.php']:
   for body in [None,{'ajax_action':'toggle_stream','id':'20'}]:
    status,_=request(anonymous,'/'+route,body);check(status==401,route+' anonymous denied')
  check(not (tmp/'db-touch').exists(),'anonymous denied before database access')
  restricted=client();token=json.loads(request(restricted,'/__fixture.php?id=2')[1])['csrf']
- for route in ['editor.php','importer.php','revalidate_proxy.php']:
+ for route in ['editor.php','importer.php','import_selective.php','revalidate_proxy.php']:
   check(request(restricted,'/'+route,{},token)[0]==403,route+' permission denied')
  admin=client();token=json.loads(request(admin,'/__fixture.php')[1])['csrf']
- for route in ['editor.php','importer.php','revalidate_proxy.php','panel_language.php','admin.php']:
+ for route in ['editor.php','importer.php','import_selective.php','revalidate_proxy.php','panel_language.php','admin.php']:
   for bad in [None,'wrong']:
    check(request(admin,'/'+route,{'ajax_action':'toggle_stream','id':'20'},bad)[0]==403,route+' invalid CSRF denied')
  check(not (tmp/'db-touch').exists(),'invalid permissions and CSRF denied before database access')
@@ -97,6 +104,29 @@ try:
  check(json.loads(request(restricted,'/__fixture.php?id=2')[1])['lang']=='fr','language isolated by admin identity')
  check(request(admin,'/panel_language.php',{'language':'ru'},token)[0]==422,'unsupported language denied')
  check(request(admin,'/revalidate_proxy.php')[0]==405,'revalidation GET denied')
+ if args.selective:
+  path='/import_selective.php?fournisseur_id=1&kind=movie'
+  status,html=request(admin,path,{'load':'1'},token)
+  check(status==200 and 'Rejected' in html and '1080p' in html,'selective catalogue renders fixture metadata')
+  snap=re.search('name="snapshot" value="([a-f0-9]+)"',html).group(1)
+  choices={'snapshot':snap,'choice['+hashlib.sha256(b'remote-20').hexdigest()+']':'import','choice['+hashlib.sha256(b'rejected').hexdigest()+']':'exclude'}
+  check(request(admin,path,{**choices,'snapshot':'invalid'},token)[0]==409,'stale snapshot rejected')
+  check(request(admin,path,{'snapshot':snap,'choice[forged]':'import'},token)[0]==422,'forged selection rejected')
+  status,html=request(admin,path,choices,token)
+  check(status==200 and 'exclusion(s) enregistrée(s)' in html,'explicit decisions commit')
+  check(snapshot()==initial,'selected existing item preserves IDs and customizations')
+  check(conn.execute('SELECT remote_stream_id FROM import_exclusions').fetchall()==[('rejected',)],'refusal persisted')
+  status,html=request(admin,path+'&container=mp4&quality=1080p')
+  check(status==200 and 'Provider rename' in html and 'Rejected' not in html,'container and quality filters render matching contents')
+  check(request(admin,path+'&container=mp4',{'snapshot':snap,'choice['+hashlib.sha256(b'rejected').hexdigest()+']':'import'},token)[0]==422,'filtered-out selection rejected')
+  choices={'snapshot':snap,'choice['+hashlib.sha256(b'rejected').hexdigest()+']':'import'}
+  request(admin,path,choices,token)
+  check(conn.execute('SELECT COUNT(*) FROM import_exclusions').fetchone()[0]==0,'explicit import lifts exclusion')
+  check(conn.execute("SELECT COUNT(*) FROM streams WHERE remote_stream_id='rejected'").fetchone()[0]==1,'only explicit new content imported')
+  request(admin,path,choices,token)
+  check(conn.execute("SELECT COUNT(*) FROM streams WHERE remote_stream_id='rejected'").fetchone()[0]==1,'repeated explicit import preserves identity')
+  print('SELECTIVE HTTP FIXTURES COMPLETE',flush=True)
+  raise SystemExit(0)
  check(request(admin,'/revalidate_proxy.php',{},token)[0]==502,'unconfigured revalidation reports failure')
  check(request(admin,'/editor.php',{'ajax_action':'bulk_toggle_streams','ids':'[]','visible':'1'},token)[0]==422,'empty bulk rejected')
  result=json.loads(request(admin,'/editor.php',{'ajax_action':'toggle_stream','id':'20'},token)[1])

@@ -1,6 +1,12 @@
 -- Schema only for a NEW empty local database. Never import over an existing database.
 -- Data and credentials intentionally excluded. Existing uploaded dump remains in Git history.
 SET NAMES utf8mb4;
+CREATE TABLE import_exclusions (
+  fournisseur_id INT NOT NULL,
+  content_type VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+  remote_stream_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  PRIMARY KEY (fournisseur_id,content_type,remote_stream_id)
+) ENGINE=InnoDB;
 
 
 CREATE TABLE `admins` (

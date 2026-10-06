@@ -156,6 +156,7 @@ if (!$selectedProvider):
     <a class="btn btn-outline-light" href="admin.php"><i class="fas fa-arrow-left"></i> Retour</a>
   </div>
   <div class="gp-import-card">
+    <p><a href="import_selective.php">Import sélectif individuel (contenus, formats, qualités)</a></p>
     <img src="assets/g-panel-logo.png" class="import-logo" alt="G-PANEL">
     <h3 class="text-center mb-4">Choisir une source</h3>
     <form method="POST"><?= panel_csrf_field() ?>

@@ -3,6 +3,7 @@
 require __DIR__.'/../panel_import.php';
 function check($ok, $name) { if (!$ok) throw new RuntimeException($name); echo "PASS $name\n"; }
 $pdo = new PDO('sqlite::memory:', null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$pdo->exec('CREATE TABLE import_exclusions(fournisseur_id INTEGER,content_type TEXT,remote_stream_id TEXT,PRIMARY KEY(fournisseur_id,content_type,remote_stream_id))');
 $pdo->exec('CREATE TABLE categories(category_id INTEGER PRIMARY KEY,category_name TEXT,parent_id INTEGER,visible INTEGER,fournisseur_id INTEGER,remote_category_id TEXT,content_type TEXT)');
 $pdo->exec('CREATE TABLE streams(stream_id INTEGER PRIMARY KEY,fournisseur_id INTEGER,stream_name TEXT,stream_icon TEXT,stream_type TEXT,category_id TEXT,direct_source TEXT,visible INTEGER,container_extension TEXT,remote_stream_id TEXT,vod_plot TEXT,vod_cast TEXT,vod_director TEXT,vod_genre TEXT,vod_release_date TEXT,vod_rating TEXT,vod_rating_5based TEXT,vod_added TEXT,vod_backdrop TEXT,vod_trailer TEXT,vod_runtime TEXT)');
 $pdo->exec("INSERT INTO categories VALUES(10,'Custom category',0,0,1,'cat','movie'),(11,'Unselected',0,1,1,'other','movie')");
