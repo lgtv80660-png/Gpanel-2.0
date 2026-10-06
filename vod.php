@@ -19,7 +19,8 @@ if (!$stmt->fetch()) { http_response_code(401); exit('Authentication failed'); }
 
 $stmt = $pdo->prepare("SELECT s.*, f.type, f.url_base, f.user, f.pass
                        FROM streams s INNER JOIN fournisseurs f ON s.fournisseur_id = f.id
-                       WHERE s.stream_id = ? AND s.stream_type = 'movie' AND s.visible = 1 LIMIT 1");
+                       INNER JOIN categories c ON s.category_id = c.category_id
+                       WHERE s.stream_id = ? AND s.stream_type = 'movie' AND s.visible = 1 AND c.visible = 1 AND f.active = 1 LIMIT 1");
 $stmt->execute([$stream_id]);
 $data = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$data) { http_response_code(404); exit('Movie not found'); }

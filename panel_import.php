@@ -48,6 +48,9 @@ function panel_import_existing(PDO $pdo, int $fid, string $kind): array {
         $rid = (string)($row['remote_stream_id'] ?? '');
         if ($rid === '') $rid = (string)$row['direct_source'];
         if ($rid !== '' && !isset($known[$rid])) $known[$rid] = (int)$row['stream_id'];
+        // Legacy M3U dumps stored URLs as identity; retain their original IDs.
+        $source = (string)$row['direct_source'];
+        if ($source !== '' && !isset($known[$source])) $known[$source] = (int)$row['stream_id'];
     }
     return $known;
 }
@@ -81,7 +84,8 @@ function process_and_insert_streams($pdo, $fid, $kind, $type, $items, $catMap) {
         $plot=$cast=$director=$genre=$release=$rating=$rating5=$added=$backdrop=$trailer=$runtime=null;
         
         if ($type === 'm3u') {
-            $name=(string)($s['name']??''); $icon=(string)($s['icon']??''); $source=(string)($s['url']??''); $rid=$source; $catRid=(string)($s['group']??'Général'); $ext=normalize_ext($s['ext'] ?? null, infer_ext_from_url($source));
+            $name=(string)($s['name']??''); $icon=(string)($s['icon']??''); $source=(string)($s['url']??''); $rid='m3u:'.hash('sha256',$source); $catRid=(string)($s['group']??'Général'); $ext=normalize_ext($s['ext'] ?? null, infer_ext_from_url($source));
+            if (isset($known[$source]) && !isset($known[$rid])) $known[$rid] = $known[$source];
         } elseif ($type === 'stalker') {
             $name=(string)($s['name']??$s['title']??''); $icon=(string)($s['logo']??$s['icon']??''); $source=(string)($s['cmd']??$s['url']??''); $rid=(string)($s['id']??$s['ch_id']??$s['cmd']??''); $catRid=(string)($s['category_id']??$s['tv_genre_id']??$s['genre_id']??$s['cat_id']??''); $ext=null;
         } else {

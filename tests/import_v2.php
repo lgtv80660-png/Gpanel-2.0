@@ -35,3 +35,6 @@ $pdo->rollBack();
 check($pdo->query('SELECT * FROM streams ORDER BY stream_id')->fetchAll(PDO::FETCH_ASSOC) === $before,'rollback preserves catalogue');
 check(process_and_insert_streams($pdo,1,'movie','xtream',[], $map) === 0,'empty payload no writes');
 check(process_and_insert_streams($pdo,1,'movie','xtream',[['stream_id'=>'skip','name'=>'Skip','category_id'=>'other']],$map) === 0,'unselected category skipped');
+$m3u = [['name'=>'Long URL fixture','url'=>'https://fixture.invalid/'.str_repeat('x',300).'.ts','group'=>'cat']];
+for ($run=0;$run<2;$run++) process_and_insert_streams($pdo,3,'live','m3u',$m3u,$map);
+check((int)$pdo->query('SELECT COUNT(*) FROM streams WHERE fournisseur_id=3')->fetchColumn() === 1,'long M3U URL imports idempotently with bounded hashed identity');

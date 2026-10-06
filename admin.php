@@ -238,6 +238,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         <div class="gp-section-label">Gestion</div><a href="#clients"><i class="fas fa-users"></i> Gestion Clients</a>
         <a href="#sources"><i class="fas fa-server"></i> Fournisseurs (Sources)</a>
         <a href="importer.php"><i class="fas fa-sync-alt"></i> Forcer l'importation</a>
+        <a href="panel_diagnostics.php" target="_blank" rel="noopener"><i class="fas fa-stethoscope"></i> Diagnostic catalogue V2</a>
 
         <a href="#" onclick="purgeNextJsCache(); return false;" style="color: #00d2ff;">
             <i class="fas fa-bolt"></i> Synchro App G-TV

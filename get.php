@@ -70,20 +70,9 @@ $sql = "
     FROM streams s
     INNER JOIN fournisseurs f
         ON f.id = s.fournisseur_id
-    LEFT JOIN categories c
-        ON c.fournisseur_id = s.fournisseur_id
-        AND c.remote_category_id = s.category_id
-        AND (
-            (s.stream_type = 'live'
-                AND c.content_type = 'live')
-            OR
-            (s.stream_type = 'movie'
-                AND c.content_type = 'movie')
-            OR
-            (s.stream_type = 'episode'
-    AND c.content_type = 'series')
-        )
+    INNER JOIN categories c ON c.category_id = s.category_id
     WHERE s.visible = 1
+      AND c.visible = 1
       AND f.active = 1
       AND s.stream_type IN ('live', 'movie', 'episode')
     ORDER BY

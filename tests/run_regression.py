@@ -18,6 +18,12 @@ importer=re.sub(r'function fetch_data_stream\([^\n]*\) \{.*?\n\}', '''function f
     return '[]';
 }''',importer,flags=re.S)
 (web/'importer.php').write_text(importer,encoding='utf-8')
+api=(web/'player_api.php').read_text(encoding='utf-8')
+api=re.sub(r'function fetch_data_proxy\([^\n]*\) \{.*?\n\}', '''function fetch_data_proxy($url) {
+    file_put_contents(getenv('FIXTURE_UPSTREAM_COUNT'), 'x', FILE_APPEND);
+    return file_get_contents(getenv('FIXTURE_UPSTREAM_JSON'));
+}''',api,flags=re.S)
+(web/'player_api.php').write_text(api,encoding='utf-8')
 db=tmp/'fixture.sqlite';conn=sqlite3.connect(db)
 conn.executescript('''
 CREATE TABLE admins(id INTEGER PRIMARY KEY,username TEXT,password TEXT);
@@ -34,6 +40,9 @@ INSERT INTO streams VALUES(20,'Visible','',1,1,10,'movie','mp4','remote-20','rem
 def snapshot():
  return {table:conn.execute('SELECT * FROM '+table+' ORDER BY 1').fetchall() for table in ['clients','fournisseurs','categories','streams']}
 initial=snapshot()
+for field in ['vod_plot','vod_cast','vod_director','vod_genre','vod_release_date','vod_rating','vod_rating_5based','vod_added','vod_backdrop','vod_trailer','vod_runtime']:
+ conn.execute('ALTER TABLE streams ADD COLUMN '+field+' TEXT')
+conn.commit();initial=snapshot()
 (web/'config.php').write_text("<?php file_put_contents(getenv('FIXTURE_DB_TOUCH'), 'x', FILE_APPEND); $pdo=new PDO('sqlite:'.getenv('FIXTURE_DB')); $pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);",encoding='utf-8')
 # Test-only setup endpoint, created solely in the disposable fixture web root.
 (web/'__fixture.php').write_text("""<?php
@@ -44,6 +53,8 @@ $_SESSION['panel_last_seen']=isset($_GET['expired'])?time()-1801:time();
 echo json_encode(['csrf'=>$_SESSION['panel_csrf'],'lang'=>panel_language()]);
 """,encoding='utf-8')
 env=os.environ.copy();env.update(PANEL_COOKIE_SECURE='0',PANEL_STATE_DIR=str(state),FIXTURE_DB=str(db),FIXTURE_DB_TOUCH=str(tmp/'db-touch'),PANEL_ADMIN_PERMISSIONS=json.dumps({'1':['panel:read','panel:manage','catalog:edit','catalog:import','cache:revalidate'],'2':['panel:read']}),PANEL_REVALIDATE_URL='',PANEL_REVALIDATE_SECRET='')
+env.update(FIXTURE_UPSTREAM_COUNT=str(tmp/'upstream-count'),FIXTURE_UPSTREAM_JSON=str(tmp/'upstream.json'))
+(tmp/'upstream.json').write_text(json.dumps({'episodes':{'1':[{'id':'ep-visible','title':'Remote title','container_extension':'mp4'},{'id':'ep-hidden','title':'Hidden remote'},{'id':'ep-new','title':'New episode','container_extension':'mkv'}]},'info':{'name':'Remote series','cover':'Remote cover','plot':'Remote plot'},'seasons':[]}),encoding='utf-8')
 php=[str(Path(args.php).resolve()),'-d','extension_dir='+str(Path(args.ext).resolve()),'-d','extension=pdo_sqlite']
 base=f'http://127.0.0.1:{args.port}'
 log=(tmp/'server.log').open('wb');server=subprocess.Popen(php+['-S',f'127.0.0.1:{args.port}','-t',str(web)],env=env,stdout=log,stderr=log)
@@ -67,7 +78,7 @@ try:
   try:request(anonymous,'/__fixture.php');break
   except URLError:time.sleep(.1)
  anonymous=client()
- for route in ['editor.php','importer.php','revalidate_proxy.php','panel_language.php']:
+ for route in ['editor.php','importer.php','revalidate_proxy.php','panel_language.php','panel_diagnostics.php']:
   for body in [None,{'ajax_action':'toggle_stream','id':'20'}]:
    status,_=request(anonymous,'/'+route,body);check(status==401,route+' anonymous denied')
  check(not (tmp/'db-touch').exists(),'anonymous denied before database access')
@@ -106,6 +117,40 @@ try:
  check(status==200 and 'panelLogout' in html and 'Gestion Clients' in html,'legacy admin login remains compatible')
  check(request(login,'/editor.php')[0]==200,'login identity permits editor')
  check(snapshot()==initial,'render and login preserve all fixture data')
+ diagnostic=json.loads(request(admin,'/panel_diagnostics.php')[1])
+ check(diagnostic['orphan_streams']==0 and diagnostic['catalogue'][0]['total']==1,'diagnostic reports fixture catalogue without secrets')
+ # Client API and playback: fixture transport, no provider network requests.
+ conn.execute("INSERT INTO streams(stream_id,stream_name,stream_icon,visible,fournisseur_id,category_id,stream_type,container_extension,direct_source,remote_stream_id,vod_plot) VALUES(30,'Custom series','Custom cover',1,1,10,'series',NULL,'series-remote','series-remote','Custom plot')")
+ conn.execute("INSERT INTO streams(stream_id,stream_name,stream_icon,visible,fournisseur_id,category_id,stream_type,container_extension,direct_source,remote_stream_id) VALUES(31,'Custom episode','Custom episode icon',1,1,10,'episode','mkv','ep-visible','ep-visible'),(32,'Hidden episode','',0,1,10,'episode','mp4','ep-hidden','ep-hidden'),(40,'Live fixture','',1,1,10,'live','ts','live-remote','live-remote')")
+ conn.commit()
+ credentials='username=visible&password=fixture-client'
+ status,body=request(anonymous,'/player_api.php?username=visible&password=wrong&action=get_series_info&series_id=30')
+ check(json.loads(body)['user_info']['auth']==0 and not (tmp/'upstream-count').exists(),'invalid client cannot fetch upstream metadata')
+ status,body=request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30');data=json.loads(body)
+ check(status==200 and len(data['episodes']['1'])==2,'on-demand series returns visible episodes only')
+ check(data['episodes']['1'][0]['id']=='31' and data['episodes']['1'][0]['title']=='Custom episode' and data['episodes']['1'][0]['container_extension']=='mkv','episode ID, title and format preserved')
+ check(data['info']['name']=='Custom series' and data['info']['cover']=='Custom cover','series custom name and icon win')
+ check(conn.execute('SELECT vod_plot FROM streams WHERE stream_id=30').fetchone()[0]=='Custom plot','series custom metadata preserved')
+ request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')
+ check((tmp/'upstream-count').read_text()=='x','second series request uses cache')
+ check(conn.execute("SELECT COUNT(*) FROM streams WHERE direct_source='ep-new'").fetchone()[0]==1,'cached series request does not duplicate episode')
+ from urllib.request import HTTPRedirectHandler
+ class NoRedirect(HTTPRedirectHandler):
+  def redirect_request(self,*args,**kwargs):return None
+ playback=build_opener(NoRedirect())
+ for route,stream,expected in [('live.php','40','live/fixture/fixture/live-remote.ts'),('vod.php','20','movie/fixture/fixture/remote-20.mp4'),('series.php','31','series/fixture/fixture/ep-visible.mkv')]:
+  try:playback.open(base+'/'+route+'?'+credentials+'&stream='+stream)
+  except HTTPError as response:check(response.code==302 and response.headers['Location'].endswith(expected),route+' fixture playback redirect')
+  check(request(anonymous,'/'+route+'?username=visible&password=wrong&stream='+stream)[0]==401,route+' rejects invalid client')
+ conn.execute('UPDATE categories SET visible=0 WHERE category_id=10');conn.commit()
+ for route,stream in [('live.php','40'),('vod.php','20'),('series.php','31')]:check(request(anonymous,'/'+route+'?'+credentials+'&stream='+stream)[0]==404,route+' hidden category denied')
+ check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1])['episodes']==[],'hidden series category denied before cached lookup')
+ check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=20')[1])['movie_data']==[],'hidden VOD detail denied')
+ check(request(anonymous,'/get.php?'+credentials)[1].count('#EXTINF')==0,'hidden category excluded from M3U playlist')
+ conn.execute('UPDATE categories SET visible=1 WHERE category_id=10');conn.execute('UPDATE fournisseurs SET active=0 WHERE id=1');conn.commit()
+ check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1])['episodes']==[],'disabled provider denied before cached lookup')
+ for action in ['get_live_streams','get_vod_streams','get_series','get_live_categories','get_vod_categories','get_series_categories']:
+  check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action='+action)[1])==[],'disabled provider excluded from '+action)
  # Missing config never opens a production connection, and leaks no details.
  proc=subprocess.run(php+[str(source/'config.php')],env={k:v for k,v in env.items() if not k.startswith('MYSQL')},capture_output=True,text=True)
  check(proc.stdout=='Database unavailable.','missing database config fails generically')

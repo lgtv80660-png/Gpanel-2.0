@@ -21,7 +21,7 @@ try {
         echo $table." count preserved: ".$before."\n";
     }
     $indexes = [
-        'streams' => ['idx_v2_catalog' => '(stream_type, visible, category_id)', 'idx_v2_identity' => '(fournisseur_id, stream_type, remote_stream_id)'],
+        'streams' => ['idx_v2_catalog' => '(stream_type, visible, category_id)', 'idx_v2_identity' => '(fournisseur_id, stream_type, remote_stream_id)', 'idx_v2_episode_transport' => '(fournisseur_id, stream_type, direct_source(191))'],
         'categories' => ['idx_v2_category_identity' => '(fournisseur_id, content_type, remote_category_id)']
     ];
     foreach ($indexes as $table => $definitions) {
