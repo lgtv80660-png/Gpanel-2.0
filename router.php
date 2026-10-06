@@ -1,6 +1,10 @@
 <?php
 // On récupère le chemin de l'URL demandée
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+if (!is_string($path) || preg_match('#(?:^|/)(?:\.|tests/|backups/|cache/)#i', rawurldecode($path)) || preg_match('/\.(sql|bk|dez|env|log)$/i', $path)) {
+    http_response_code(404);
+    exit;
+}
 
 // 1. Interception pour le DIRECT (Live)
 if (preg_match('#^/live/([^/]+)/([^/]+)/([^/]+)\.(.*)$#i', $path, $matches)) {

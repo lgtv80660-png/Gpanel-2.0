@@ -12,8 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require 'config.php';
-require 'db_migrations.php';
-ensure_panel_schema($pdo);
+// Schema changes are explicit CLI operations; playback never migrates the database.
 
 header('Content-Type: application/json; charset=utf-8');
 

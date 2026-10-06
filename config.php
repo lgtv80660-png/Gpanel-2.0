@@ -1,4 +1,3 @@
-
 <?php
 // Configuration locale WAMP uniquement.
 // Ne pas utiliser ce fichier en production.

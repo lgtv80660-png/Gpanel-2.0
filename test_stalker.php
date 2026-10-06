@@ -1,7 +1,10 @@
 <?php
+require_once __DIR__.'/panel_security.php';
+panel_require_admin('catalog:import');
+panel_check_csrf();
 // Force l'affichage des erreurs sur Railway pour le diagnostic
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
+ini_set('display_errors', 0);
+ini_set('display_startup_errors', 0);
 error_reporting(E_ALL);
 
 // Désactiver la limite de temps de 30 secondes de PHP
