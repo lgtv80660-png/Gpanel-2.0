@@ -1,0 +1,14 @@
+.git
+.env*
+*.bk
+*.dez
+*.log
+*.sqlite*
+*.txt
+*.md
+tests
+backups
+cache
+vendor
+work
+outputs

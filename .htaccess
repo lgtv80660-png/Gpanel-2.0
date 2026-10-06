@@ -1,6 +1,6 @@
 Options -MultiViews
 RewriteEngine On
-RewriteBase /gpanel-test/
+RewriteBase /
 
 # Playlist M3U
 
