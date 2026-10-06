@@ -7,6 +7,7 @@ test "${PANEL_STATE_DIR:-}" = "/var/lib/gpanel/state" || { echo 'Private state d
 mkdir -p "$PANEL_STATE_DIR"
 chown www-data:www-data "$PANEL_STATE_DIR"
 chmod 700 "$PANEL_STATE_DIR"
+cp /opt/gpanel/deploy/apache.conf /etc/apache2/sites-available/000-default.conf
 sed -i "s/^Listen .*/Listen ${PORT}/" /etc/apache2/ports.conf
 sed -i "s/<VirtualHost \*:8080>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
 php /opt/gpanel/deploy/initialize-test.php
