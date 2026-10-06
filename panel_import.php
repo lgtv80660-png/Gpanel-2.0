@@ -175,6 +175,30 @@ function process_and_insert_streams($pdo, $fid, $kind, $type, $items, $catMap) {
         $stmt->execute($values);
     }
     
+    if ($kind === 'movie') {
+        require_once __DIR__.'/panel_movie_groups.php';
+        if (movie_groups_ready($pdo)) {
+            $identities=panel_import_existing($pdo,(int)$fid,$kind);
+            $delete=$pdo->prepare('DELETE FROM movie_identifiers WHERE stream_id=?');
+            $insert=$pdo->prepare('INSERT INTO movie_identifiers(stream_id,tmdb_id,imdb_id,release_year) VALUES (?,?,?,?)');
+            foreach ($items as $item) {
+                if (!is_array($item)) continue;
+                $rid=(string)($item['stream_id']??$item['id']??'');
+                if (!isset($identities[$rid]) || isset($excluded[$rid])) continue;
+                $tmdb=(string)($item['tmdb_id']??$item['tmdb']??'');
+                $imdb=(string)($item['imdb_id']??'');
+                $year=(string)($item['year']??substr((string)($item['releaseDate']??$item['releasedate']??''),0,4));
+                $tmdb=preg_match('/^[1-9][0-9]*$/',$tmdb)?$tmdb:null;
+                $imdb=preg_match('/^tt[0-9]+$/',$imdb)?$imdb:null;
+                $year=preg_match('/^(19|20)[0-9]{2}$/',$year)?$year:null;
+                if ($tmdb===null && $imdb===null && $year===null) continue;
+                $id=$identities[$rid];
+                // Keep previously collected identifiers when a later catalogue omits them.
+                $q=$pdo->prepare('SELECT * FROM movie_identifiers WHERE stream_id=?'); $q->execute([$id]); $old=$q->fetch(PDO::FETCH_ASSOC)?:[];
+                $delete->execute([$id]); $insert->execute([$id,$tmdb??($old['tmdb_id']??null),$imdb??($old['imdb_id']??null),$year??($old['release_year']??null)]);
+            }
+        }
+    }
     return $count;
 }
 

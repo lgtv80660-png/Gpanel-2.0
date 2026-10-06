@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require 'config.php';
+require_once __DIR__.'/panel_movie_groups.php';
 require_once __DIR__.'/panel_series_cache.php';
 require_once __DIR__.'/panel_import.php';
 // Schema changes are explicit CLI operations; playback never migrates the database.
@@ -132,6 +133,7 @@ elseif ($action === 'get_vod_streams') {
 
     $result = [];
     foreach ($streams as $i => $s) {
+        if (!movie_source_allowed($pdo,$s['stream_id'])) continue;
         $ext = strtolower(trim((string)($s['container_extension'] ?? '')));
         $ext = preg_replace('/[^a-z0-9]/i', '', $ext);
         if ($ext === '') $ext = 'mp4';
@@ -172,6 +174,7 @@ elseif ($action === 'get_vod_info') {
     $stmt = $pdo->prepare("SELECT s.*, f.url_base, f.user, f.pass, f.type FROM streams s INNER JOIN fournisseurs f ON s.fournisseur_id=f.id INNER JOIN categories c ON s.category_id=c.category_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND f.active=1 LIMIT 1");
     $stmt->execute([$localVodId]);
     $movie = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($movie && !movie_source_allowed($pdo,$localVodId)) $movie=false;
     if (!$movie) { echo json_encode(['info'=>[], 'movie_data'=>[]]); exit; }
 
     $info = [

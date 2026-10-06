@@ -237,6 +237,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         <a href="editor.php"><i class="fas fa-folder-open"></i> Gestion des Bouquets</a>
         <div class="gp-section-label">Gestion</div><a href="#clients"><i class="fas fa-users"></i> Gestion Clients</a>
         <a href="#sources"><i class="fas fa-server"></i> Fournisseurs (Sources)</a>
+        <a href="movie_duplicates.php">Doublons films</a>
         <a href="importer.php"><i class="fas fa-sync-alt"></i> Forcer l'importation</a>
         <a href="panel_diagnostics.php" target="_blank" rel="noopener"><i class="fas fa-stethoscope"></i> Diagnostic catalogue V2</a>
 

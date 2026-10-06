@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__.'/panel_movie_groups.php';
 
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -99,6 +100,7 @@ echo "#EXTM3U\n";
 
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     $id = (int)$row['stream_id'];
+    if ($row['stream_type']==='movie' && !movie_source_allowed($pdo,$id)) continue;
 
     $name = trim((string)$row['stream_name']);
     $name = str_replace(["\r", "\n", '"'], ' ', $name);
