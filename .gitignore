@@ -7,3 +7,4 @@
 /backups/
 /cache/
 /vendor/
+__pycache__/
