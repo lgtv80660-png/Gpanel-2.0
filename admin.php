@@ -249,10 +249,10 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         <?= $message ?>
 
         <?php
-        $hero_background = '';
+        $hero_background = '/assets/background/head-banner.png';
         foreach (['png', 'jpg', 'jpeg'] as $extension) {
             $candidate = 'assets/background/head-banner.' . $extension;
-            if (is_file(__DIR__ . '/' . $candidate)) { $hero_background = $candidate; break; }
+            if (is_file(__DIR__ . '/' . $candidate)) { $hero_background = '/' . $candidate; break; }
         }
         $dashboard_catalogue = $pdo->query('SELECT COUNT(*) FROM streams')->fetchColumn();
         ?>
