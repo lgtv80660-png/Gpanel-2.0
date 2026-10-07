@@ -227,7 +227,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         .copy-box { background: var(--bg-dark); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); font-family: monospace; font-size: 13px; margin-bottom: 15px; word-break: break-all; }
         .copy-box span { color: var(--accent); }
     </style>
-    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007-2">
+    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007-3">
 <?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript></head>
 <body class="dashboard-v2">
 <script>
