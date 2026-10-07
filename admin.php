@@ -148,7 +148,7 @@ if (isset($_POST['edit_source_btn'])) {
 
     $stmt = $pdo->prepare("UPDATE fournisseurs SET nom = ?, url_base = ?, user = ?, pass = ?, mac_address = ?, proxy = ? WHERE id = ?");
     if($stmt->execute([$new_nom, $_POST['edit_url'], $_POST['edit_user'], $_POST['edit_pass'], $_POST['edit_mac_address'] ?? null, $_POST['edit_proxy'] ?? null, $source_id])) {
-        
+
         if ($old_nom && $old_nom !== $new_nom) {
             $oldTag = '[' . $old_nom . ']';
             $newTag = '[' . $new_nom . ']';
@@ -227,7 +227,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         .copy-box { background: var(--bg-dark); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); font-family: monospace; font-size: 13px; margin-bottom: 15px; word-break: break-all; }
         .copy-box span { color: var(--accent); }
     </style>
-    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007">
+    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007-2">
 <?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript></head>
 <body class="dashboard-v2">
 <script>
@@ -245,116 +245,55 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
 }());
 </script>
 <form id="panelLogout" method="POST" hidden><?= panel_csrf_field() ?><input name="logout" value="1"></form>
-    <aside class="sidebar">
-        <div class="brand"><img class="brand-full" src="assets/g-panel-logo-dark.png" alt="G-PANEL"><img class="brand-mark" src="assets/g-panel-mark.png" alt="G-PANEL"></div><div class="gp-brand-mini">IPTV MANAGEMENT SYSTEM</div>
-        <div class="gp-section-label">Navigation</div><a href="admin.php" class="active"><i class="fas fa-tachometer-alt"></i> Tableau de bord</a>
-        <a href="editor.php"><i class="fas fa-folder-open"></i> Gestion des Bouquets</a>
-        <div class="gp-section-label">Gestion</div><a href="#clients"><i class="fas fa-users"></i> Gestion Clients</a>
-        <a href="#sources"><i class="fas fa-server"></i> Fournisseurs (Sources)</a>
-        <a href="personal_content.php">Contenus personnels</a><a href="panel_diagnostics.php">Diagnostic &amp; Santé</a><a href="movie_duplicates.php"><i class="fas fa-layer-group"></i> Regroupement VOD</a>
-        <a href="import_selective.php"><i class="fas fa-filter"></i> Imports sélectifs</a>
-        <a href="importer.php"><i class="fas fa-sync-alt"></i> Forcer l'importation</a>
-        <a href="panel_diagnostics.php" target="_blank" rel="noopener"><i class="fas fa-stethoscope"></i> Diagnostic catalogue V2</a>
-
-        <a href="#" onclick="purgeNextJsCache(); return false;" style="color: #00d2ff;">
-            <i class="fas fa-bolt"></i> Synchro App G-TV
-        </a>
-
-        <a href="#" onclick="event.preventDefault();document.getElementById('panelLogout').submit()" style="color: #ff4757; margin-top: 30px;"><i class="fas fa-sign-out-alt"></i> Déconnexion</a>
-    </aside>
-
     <main class="main-content">
         <header class="top-header">
-            <div class="gp-page-title"><div><div class="eyebrow">G-PANEL V2 / Administration</div><h1>Tableau de bord</h1></div><span class="gp-chip"><i class="fas fa-shield-halved"></i> Catalogue administré</span></div>
-            <div class="user-profile">
-                <div class="avatar">Z</div>
-                <div>
-                    <div style="font-weight: 600; color: #fff;">Admin</div>
-                    <div style="font-size: 12px; color: var(--text-muted);">Administrateur</div>
-                </div>
-            </div>
+            <a href="admin.php" class="dashboard-brand"><img src="assets/g-panel-logo.png" alt="G-PANEL"></a>
+            <a href="admin.php" class="dashboard-tab" aria-current="page"><i class="fas fa-house"></i> Tableau de bord</a>
+            <div class="dashboard-header-tools sidebar"><div class="gp-sidebar-footer"></div></div>
+            <details class="admin-menu"><summary><span class="avatar">Z</span><span><b>Admin</b><small>Administrateur</small></span><i class="fas fa-chevron-down"></i></summary><div><button type="submit" form="panelLogout">Déconnexion</button></div></details>
         </header>
-
         <?= $message ?>
 
+        <?php
+        $hero_background = '';
+        foreach (['png', 'jpg', 'jpeg'] as $extension) {
+            $candidate = 'assets/background/head-banner.' . $extension;
+            if (is_file(__DIR__ . '/' . $candidate)) { $hero_background = $candidate; break; }
+        }
+        $dashboard_catalogue = $pdo->query('SELECT COUNT(*) FROM streams')->fetchColumn();
+        ?>
         <section class="dashboard-hero">
+            <div class="hero-banner"<?= $hero_background ? ' style="--hero-image:url(' . htmlspecialchars($hero_background, ENT_QUOTES, 'UTF-8') . ')"' : '' ?>>
             <div class="hero-copy"><span class="hero-status"><span></span> Administration en ligne</span>
-            <p class="hero-breadcrumb">Administration / Tableau de bord</p><h2>Bonjour, Admin</h2>
+            <p class="hero-breadcrumb">G-PANEL V2 / ADMINISTRATION</p><h2>Bonjour, <em>Admin</em></h2>
             <p class="hero-description">Pilotez vos clients, vos sources et votre catalogue IPTV depuis une seule interface.</p>
             <div class="hero-actions"><button type="button" class="btn hero-primary" onclick="purgeNextJsCache()"><i class="fas fa-bolt"></i> Synchro app G-TV</button><a href="importer.php" class="btn hero-secondary"><i class="fas fa-sync-alt"></i> Forcer l'importation</a></div></div>
-            <div class="hero-metrics"><div><i class="fas fa-users"></i><span>Clients<b><?= $total_clients ?></b></span></div><div><i class="fas fa-server"></i><span>Sources configurées<b><?= $total_sources ?></b></span></div><div><i class="fas fa-shield-alt"></i><span>Catalogue<b>Administré</b></span></div></div>
-            <svg class="hero-wave" viewBox="0 0 1200 100" preserveAspectRatio="none" aria-hidden="true"><path d="M0 70 Q150 10 300 65 T600 45 T900 65 T1200 40 M0 90 Q150 30 300 85 T600 65 T900 85 T1200 60" fill="none" stroke="white" stroke-opacity=".17" stroke-width="2" stroke-dasharray="6 12"/></svg>
+            </div>
+            <div class="hero-metrics">
+                <div><i class="fas fa-users"></i><span>Clients<b><?= $total_clients ?></b></span></div>
+                <div><i class="fas fa-database"></i><span>Fournisseurs (Sources)<b><?= $total_sources ?></b></span></div>
+                <a href="packs.php" class="packs-kpi"><i class="fas fa-cube"></i><span>Packs<b aria-label="Compteur disponible avec le futur module Packs">—</b></span><i class="fas fa-chevron-right kpi-arrow"></i></a>
+                <div><i class="fas fa-shield-alt"></i><span>Catalogue<b><?= $dashboard_catalogue ?></b></span></div>
+            </div>
         </section>
-        <p class="shortcut-label">RACCOURCIS</p><div class="dashboard-shortcuts"><a href="movie_duplicates.php"><i class="fas fa-layer-group"></i> Regroupement VOD <span>›</span></a><a href="import_selective.php"><i class="fas fa-filter"></i> Imports sélectifs <span>›</span></a><a href="panel_diagnostics.php"><i class="fas fa-heartbeat"></i> Diagnostic catalogue V2 <span>›</span></a></div>
-        <div class="dashboard-kpis"><div><i class="fas fa-users"></i><span>Clients<b><?= $total_clients ?></b></span></div><div><i class="fas fa-server"></i><span>Sources configurées<b><?= $total_sources ?></b></span></div><div><i class="fas fa-shield-alt"></i><span>Catalogue<b class="catalogue-badge">Administré</b></span></div><div><i class="far fa-clock"></i><span>Dernière synchro<b class="sync-value">Non disponible</b></span></div></div>
+        <p class="shortcut-label">RACCOURCIS</p>
+        <div class="dashboard-shortcuts">
+            <a href="editor.php"><i class="fas fa-folder"></i><div>Gestionnaire de bouquet<small>Créer et organiser vos bouquets</small></div><span>›</span></a>
+            <a href="movie_duplicates.php"><i class="fas fa-layer-group"></i><div>Regroupement VOD<small>Regrouper vos contenus VOD</small></div><span>›</span></a>
+            <a href="import_selective.php"><i class="fas fa-filter"></i><div>Imports sélectifs<small>Importer des contenus ciblés</small></div><span>›</span></a>
+            <a href="personal_content.php"><i class="fas fa-folder"></i><div>Contenus personnels<small>Gérer vos contenus personnels</small></div><span>›</span></a>
+        </div>
         <div class="row dashboard-grid">
             <div class="col-xl-4 dashboard-access">
-                <div class="glass-panel access-card">
-                    <div class="card-heading"><i class="fas fa-user-plus"></i><div><h5>Créer un accès</h5><p>Nouveau client IPTV</p></div></div><div class="access-illustration" aria-hidden="true"><div class="tv-screen"><span>▶</span></div><div class="tv-stand"></div></div>
-                    <form method="POST"><?= panel_csrf_field() ?>
-                        <div class="mb-3">
-                            <label class="form-label">Nom d'utilisateur</label>
-                            <input type="text" name="username" class="form-control" required placeholder="ex. client01" autocomplete="off">
-                        </div>
-                        <div class="mb-4">
-                            <label class="form-label">Mot de passe</label>
-                            <input type="password" name="password" class="form-control" required autocomplete="new-password" placeholder="••••••••">
-                        </div>
-                        <button type="submit" name="add_client" class="btn btn-primary w-100"><i class="fas fa-plus me-2"></i>Créer l'accès</button>
-                    </form>
+                <div class="glass-panel diagnostic-card">
+                    <div class="card-heading"><i class="fas fa-heart"></i><div><h5>Diagnostic &amp; Santé</h5><p>Vérifier l'état du catalogue et des sources</p></div></div>
+                    <div class="diagnostic-illustration" aria-hidden="true"><div class="diagnostic-orbit"><i class="fas fa-shield-heart"></i><i class="fas fa-heartbeat diagnostic-pulse"></i></div></div>
+                    <a href="panel_diagnostics.php" class="btn btn-primary"><i class="fas fa-stethoscope"></i> Lancer le diagnostic <span>›</span></a>
                 </div>
-
-                <details class="glass-panel source-create" id="source-create"><summary>Ajouter une source</summary>
-                    <h5 class="mb-4"><i class="fas fa-link text-primary me-2"></i> Ajouter une Source</h5>
-                    <form method="POST"><?= panel_csrf_field() ?>
-                        <div class="mb-3">
-                            <label class="form-label">Nom d'identification</label>
-                            <input type="text" name="nom" class="form-control" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Type de source</label>
-                            <select name="type" id="source_type" class="form-select" onchange="toggleFields()">
-                                <option value="xtream">API Xtream Codes</option>
-                                <option value="m3u">Lien M3U Direct</option>
-                                <option value="stalker">Portail Stalker (MAC)</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">URL de base / Host</label>
-                            <input type="url" name="url_base" class="form-control" required placeholder="http://server.com:8080">
-                        </div>
-                        
-                        <div class="row" id="auth_fields_xtream">
-                            <div class="col-6 mb-3">
-                                <label class="form-label">Utilisateur</label>
-                                <input type="text" name="user" class="form-control">
-                            </div>
-                            <div class="col-6 mb-3">
-                                <label class="form-label">Mot de passe</label>
-                                <input type="text" name="pass" class="form-control">
-                            </div>
-                        </div>
-
-                        <div id="auth_fields_stalker" style="display: none;">
-                            <div class="mb-3">
-                                <label class="form-label">Adresse MAC</label>
-                                <input type="text" name="mac_address" class="form-control" placeholder="00:1A:79:XX:XX:XX">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label text-warning"><i class="fas fa-shield-alt"></i> Proxy HTTP (Optionnel)</label>
-                                <input type="text" name="proxy" class="form-control" placeholder="IP:PORT ou IP:PORT:USER:PASS">
-                                <div class="form-text text-muted">Contourne le blocage IP des fournisseurs Stalker.</div>
-                            </div>
-                        </div>
-
-                        <button type="submit" name="add_source" class="btn btn-primary w-100"><i class="fas fa-save me-2"></i>Enregistrer la source</button>
-                    </form>
-                </details>
             </div>
-
             <div class="col-xl-8 dashboard-tables">
                 <div class="glass-panel">
-                    <div class="card-heading" id="clients"><i class="fas fa-users"></i><div><h5>Clients</h5><p>Accès IPTV créés pour vos abonnés</p></div><button class="btn filter-toggle" type="button" onclick="document.getElementById('client-filter').hidden = !document.getElementById('client-filter').hidden"><i class="fas fa-filter"></i> Filtrer</button></div><div id="client-filter" hidden><input class="form-control" aria-label="Rechercher un client" placeholder="Rechercher un client" oninput="document.querySelectorAll('#clients-table tbody tr').forEach(row => row.hidden = !row.cells[0].textContent.toLowerCase().includes(this.value.toLowerCase()))"></div>
+                    <div class="card-heading" id="clients"><i class="fas fa-users"></i><div><h5>Clients</h5><p>Accès IPTV créés pour vos abonnés</p></div><button class="btn client-create-button" type="button" data-bs-toggle="modal" data-bs-target="#createClientModal"><i class="fas fa-plus"></i> Ajouter un client</button><button class="btn filter-toggle" type="button" onclick="document.getElementById('client-filter').hidden = !document.getElementById('client-filter').hidden"><i class="fas fa-filter"></i> Filtrer</button></div><div id="client-filter" hidden><input class="form-control" aria-label="Rechercher un client" placeholder="Rechercher un client" oninput="document.querySelectorAll('#clients-table tbody tr').forEach(row => row.hidden = !row.cells[0].textContent.toLowerCase().includes(this.value.toLowerCase()))"></div>
                     <div class="table-responsive">
                         <table id="clients-table" class="table table-borderless table-hover">
                             <thead>
@@ -393,7 +332,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                 </div>
 
                 <div class="glass-panel">
-                    <div class="card-heading" id="sources"><i class="fas fa-server"></i><div><h5>Fournisseurs</h5><p>Sources d’import du catalogue</p></div><button type="button" class="btn filter-toggle" onclick="const panel=document.getElementById('source-create');panel.open=true;panel.scrollIntoView({behavior:'smooth'});panel.querySelector('input').focus()"><i class="fas fa-plus"></i> Ajouter une source</button></div>
+                    <div class="card-heading" id="sources"><i class="fas fa-server"></i><div><h5>Fournisseurs (Sources)</h5><p>Sources d’import du catalogue</p></div><button type="button" class="btn filter-toggle" data-bs-toggle="modal" data-bs-target="#createSourceModal"><i class="fas fa-plus"></i> Ajouter une source</button></div>
                     <div class="table-responsive">
                         <table class="table table-borderless table-hover">
                             <thead>
@@ -443,6 +382,59 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         <div class="text-center" style="color:#536a83;font-size:11px;padding:8px 0 4px;letter-spacing:.4px;">G-PANEL • IPTV MANAGEMENT SYSTEM</div>
     </main>
 
+<div class="modal fade" id="createClientModal" tabindex="-1" aria-labelledby="createClientTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 id="createClientTitle">Ajouter un client</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div><div class="modal-body"><form method="POST"><?= panel_csrf_field() ?>
+                        <div class="mb-3">
+                            <label class="form-label">Nom d'utilisateur</label>
+                            <input type="text" name="username" class="form-control" required placeholder="ex. client01" autocomplete="off">
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label">Mot de passe</label>
+                            <input type="password" name="password" class="form-control" required autocomplete="new-password" placeholder="••••••••">
+                        </div>
+                        <button type="submit" name="add_client" class="btn btn-primary w-100"><i class="fas fa-plus me-2"></i>Créer l'accès</button>
+                    </form></div></div></div></div><div class="modal fade" id="createSourceModal" tabindex="-1" aria-labelledby="createSourceTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 id="createSourceTitle">Ajouter une source</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div><div class="modal-body"><form method="POST"><?= panel_csrf_field() ?>
+                        <div class="mb-3">
+                            <label class="form-label">Nom d'identification</label>
+                            <input type="text" name="nom" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Type de source</label>
+                            <select name="type" id="source_type" class="form-select" onchange="toggleFields()">
+                                <option value="xtream">API Xtream Codes</option>
+                                <option value="m3u">Lien M3U Direct</option>
+                                <option value="stalker">Portail Stalker (MAC)</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">URL de base / Host</label>
+                            <input type="url" name="url_base" class="form-control" required placeholder="http://server.com:8080">
+                        </div>
+
+                        <div class="row" id="auth_fields_xtream">
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Utilisateur</label>
+                                <input type="text" name="user" class="form-control">
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Mot de passe</label>
+                                <input type="text" name="pass" class="form-control">
+                            </div>
+                        </div>
+
+                        <div id="auth_fields_stalker" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label">Adresse MAC</label>
+                                <input type="text" name="mac_address" class="form-control" placeholder="00:1A:79:XX:XX:XX">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label text-warning"><i class="fas fa-shield-alt"></i> Proxy HTTP (Optionnel)</label>
+                                <input type="text" name="proxy" class="form-control" placeholder="IP:PORT ou IP:PORT:USER:PASS">
+                                <div class="form-text text-muted">Contourne le blocage IP des fournisseurs Stalker.</div>
+                            </div>
+                        </div>
+
+                        <button type="submit" name="add_source" class="btn btn-primary w-100"><i class="fas fa-save me-2"></i>Enregistrer la source</button>
+                    </form></div></div></div></div>
     <div class="modal fade" id="credentialsModal" tabindex="-1" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -560,7 +552,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
 
         function showCredentials(username, password) {
             let m3uLink = `${serverBaseUrl}/get.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&type=m3u_plus`;
-            
+
             const box = document.getElementById('modal-link-box');
             if (box) box.innerText = m3uLink;
 
@@ -595,7 +587,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
 
         function purgeNextJsCache() {
             if (!confirm(GPanelUI.t("Voulez-vous réinitialiser le cache de l'application G-TV ?"))) return;
-            
+
             fetch('revalidate_proxy.php', {method:'POST', headers:{'X-CSRF-Token':window.PANEL_CONFIG.csrf}})
                 .then(res => {
                     if(!res.ok) throw new Error(GPanelUI.t("❌ Erreur de communication avec l'application."));
