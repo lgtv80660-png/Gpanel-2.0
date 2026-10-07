@@ -335,6 +335,12 @@ body:has(.gp-workspace){max-width:none;margin:0;padding:0}
 html[data-theme="light"] .gp-workspace{--gp-panel-2:#fff}
 
 .gp-workspace a,.table a.text-muted{color:var(--gp-cyan)!important}.gp-workspace a:hover{text-decoration:underline}
+/* Shared imports have no page-local sidebar positioning. Keep navigation out
+   of document flow so it cannot push the forms below the first viewport. */
+@media(min-width:641px){
+ .sidebar{position:fixed!important;top:0;bottom:0;left:0;height:100vh!important;box-sizing:border-box;z-index:2100}
+}
+.gp-import-shell.main-content{margin-right:0!important;box-sizing:border-box}
 /* Final shared admin surfaces, including import selection and progress. */
 .gp-nav-icon{display:inline-flex;width:22px;justify-content:center;color:var(--gp-cyan);font-size:20px}
 .sidebar a:focus-visible .gp-nav-icon,.sidebar a:hover .gp-nav-icon{animation:gp-icon-pop .45s ease}

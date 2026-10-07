@@ -63,10 +63,16 @@ const path=require('node:path');
  console.log('PASS dashboard static labels covered by all three dictionaries');
  for (const width of [1440,768,390]) {
   await page.setViewportSize({width,height:900});
-  for (const route of ['admin.php','admin.php?tab=clients','admin.php?tab=providers','editor.php','editor.php?cat_id=10','importer.php','import_selective.php','movie_duplicates.php']) {
+  for (const route of ['admin.php','admin.php?tab=clients','admin.php?tab=providers','editor.php','editor.php?cat_id=10','importer.php','importer.php?fournisseur_id=1','import_selective.php','import_selective.php?fournisseur_id=1','movie_duplicates.php']) {
    await page.goto('http://127.0.0.1:18976/'+route);await page.waitForSelector('html.gp-ready');
    assert.equal(await page.locator('.sidebar a[aria-current="page"]').count(),1,route);
    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),route+' overflows at '+width);
+   if (route.startsWith('import')) {
+    const main = page.locator('main,.main-content').first();
+    const box = await main.boundingBox();
+    assert(box && box.y < 200 && box.width > 200, route+' content pushed below viewport at '+width+': '+JSON.stringify(box));
+    assert(await main.evaluate(el=>!!el.closest('form') || [...el.querySelectorAll('form')].some(f=>f.getBoundingClientRect().height>0)),route+' form invisible');
+   }
    if(width===390){const toggle=page.locator('.gp-mobile-nav');await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');await page.keyboard.press('Escape');assert.equal(await toggle.getAttribute('aria-expanded'),'false');}
   }
   console.log('PASS all admin screens navigation and overflow at '+width);
