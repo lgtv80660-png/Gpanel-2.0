@@ -36,7 +36,9 @@ try:
  credentials=urlencode({'username':'gpanel-test-client','password':client_password})
  for action in ['get_live_categories','get_vod_categories','get_series_categories','get_live_streams','get_vod_streams','get_series']:
   status,body,_=request('/player_api.php?'+credentials+'&action='+action)
-  check(status==200 and len(json.loads(body))==1,'Xtream fixture '+action)
+  fixture_keys={'get_live_categories':('category_id',1),'get_vod_categories':('category_id',2),'get_series_categories':('category_id',3),'get_live_streams':('stream_id',1),'get_vod_streams':('stream_id',2),'get_series':('series_id',3)}
+  key,fixture_id=fixture_keys[action];rows=json.loads(body)
+  check(status==200 and isinstance(rows,list) and any(str(row.get(key))==str(fixture_id) for row in rows),'Xtream fixture present without assuming empty catalogue '+action)
  status,body,_=request('/player_api.php?'+credentials+'&action=get_vod_info&vod_id=2')
  check(status==200 and json.loads(body)['movie_data'],'VOD fixture metadata via loopback only')
  series=[]
@@ -45,7 +47,7 @@ try:
   series.append(data['episodes']['1'][0]['id'])
  check(series==['4','4'],'on-demand series cached with stable episode ID')
  status,body,_=request('/get.php?'+credentials)
- check(status==200 and body.startswith('#EXTM3U') and body.count('#EXTINF')==3,'synthetic M3U playlist')
+ check(status==200 and body.startswith('#EXTM3U') and all('/'+kind+'/gpanel-test-client/' in body and '/'+sid+'.'+ext in body for kind,sid,ext in [('live','1','ts'),('movie','2','mp4'),('series','4','mkv')]),'synthetic M3U fixtures present alongside existing additions')
  for kind,stream,ext in [('live','1','ts'),('movie','2','mp4'),('series','4','mkv')]:
   path='/'+kind+'/gpanel-test-client/'+quote(client_password,safe='')+'/'+stream+'.'+ext
   status,body,headers=request(path)

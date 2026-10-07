@@ -13,3 +13,9 @@ Migration additive : `content_v2.sql`, appelée par `migrate_v2.php` et intégr�
 Tests : `tests/content_v2.php`, `tests/import_selective.php`, `tests/run_regression.py` (normal et `--selective`) et `tests/content_ui.cjs` (1440 et 390 px). Fixtures SQLite et transport simulé uniquement. Contrôles HTTP/MySQL du service TEST après déploiement. Lecture de vrais médias, charge et compatibilité avec l'app externe non testées, conformément à l'absence d'appels fournisseurs.
 
 Les anciens épisodes fournisseur sans lien connu sont conservés ; le lien est établi à la prochaine matérialisation de leur série. Les exclusions ne masquent pas les contenus existants : utiliser la désactivation séparée. Une exclusion de catégorie bloque les futurs nouveaux contenus autant que les rafraîchissements.
+
+## Déploiement vérifié
+
+Code applicatif : `5b8d08bd27fa70609380ae232ea6a17734772489`. Railway : `06feda0c-0378-476d-bcd4-4e0684310659`, statut SUCCESS et santé PHP/MySQL validée. URL : https://gpanel-v2-test-test.up.railway.app.
+
+Catalogue conservé : 65 Live, 403 films, 358 séries, 25 épisodes (851 contenus), zéro orphelin. Pages Diagnostic, Contenus personnels, Création de série et Gestion fournisseur contrôlées avec authentification. Table additive `content_settings` en InnoDB. Listes Xtream et M3U vérifiées par présence des IDs synthétiques, sans supposer une base vide ; métadonnées et lecture uniquement des fixtures en boucle locale. Aucun appel de catalogue fournisseur réel ni lecture des autres contenus.
