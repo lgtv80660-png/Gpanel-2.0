@@ -227,7 +227,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         .copy-box { background: var(--bg-dark); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); font-family: monospace; font-size: 13px; margin-bottom: 15px; word-break: break-all; }
         .copy-box span { color: var(--accent); }
     </style>
-    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007-3">
+    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007-4">
 <?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript></head>
 <body class="dashboard-v2">
 <script>
@@ -246,12 +246,6 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
 </script>
 <form id="panelLogout" method="POST" hidden><?= panel_csrf_field() ?><input name="logout" value="1"></form>
     <main class="main-content">
-        <header class="top-header">
-            <a href="admin.php" class="dashboard-brand"><img src="assets/g-panel-logo.png" alt="G-PANEL"></a>
-            <a href="admin.php" class="dashboard-tab" aria-current="page"><i class="fas fa-house"></i> Tableau de bord</a>
-            <div class="dashboard-header-tools sidebar"><div class="gp-sidebar-footer"></div></div>
-            <details class="admin-menu"><summary><span class="avatar">Z</span><span><b>Admin</b><small>Administrateur</small></span><i class="fas fa-chevron-down"></i></summary><div><button type="submit" form="panelLogout">Déconnexion</button></div></details>
-        </header>
         <?= $message ?>
 
         <?php
@@ -264,6 +258,16 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         ?>
         <section class="dashboard-hero">
             <div class="hero-banner"<?= $hero_background ? ' style="--hero-image:url(' . htmlspecialchars($hero_background, ENT_QUOTES, 'UTF-8') . ')"' : '' ?>>
+            <div class="hero-toolbar">
+                <a href="admin.php" class="dashboard-brand"><img src="assets/g-panel-logo.png" alt="G-PANEL"></a>
+                <details class="admin-menu">
+                    <summary><span class="avatar">A</span><span><b>Admin</b><small>Administrateur</small></span><i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
+                    <div class="admin-menu-panel">
+                        <button type="submit" form="panelLogout">Déconnexion</button>
+                        <div class="dashboard-header-tools sidebar"><div class="gp-sidebar-footer"></div></div>
+                    </div>
+                </details>
+            </div>
             <div class="hero-copy"><span class="hero-status"><span></span> Administration en ligne</span>
             <p class="hero-breadcrumb">G-PANEL V2 / ADMINISTRATION</p><h2>Bonjour, <em>Admin</em></h2>
             <p class="hero-description">Pilotez vos clients, vos sources et votre catalogue IPTV depuis une seule interface.</p>
