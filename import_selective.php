@@ -73,7 +73,7 @@ $view = $valid ? panel_import_page($snapshot['catalog']['items'],$type,(string)(
 $excluded = [];
 if ($valid) try { $excluded = panel_import_exclusions($pdo,$fid,$kind); } catch (Throwable $e) { $message = 'Migration V2 requise pour les exclusions persistantes.'; $view = null; }
 ?>
-<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Import sélectif — G-PANEL</title><link rel="stylesheet" href="assets/gpanel.css"><style>main{max-width:1100px;margin:30px auto;padding:20px}select,button{padding:8px;margin:4px}table{width:100%;border-collapse:collapse}td,th{padding:10px;text-align:left;border-bottom:1px solid #64748b}</style></head><body><main>
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Import sélectif — G-PANEL</title><link rel="stylesheet" href="assets/gpanel.css"><style>main{max-width:1100px;margin:30px auto;padding:20px}select,button{padding:8px;margin:4px}table{width:100%;border-collapse:collapse}td,th{padding:10px;text-align:left;border-bottom:1px solid #64748b}</style></head><body><aside class="sidebar"><div class="brand"><img class="brand-full" src="assets/g-panel-logo-dark.png" alt="G-PANEL V2"></div><div class="gp-section-label">Administration V2</div><a href="admin.php">Tableau de bord</a><a href="editor.php">Gestion des Bouquets</a><a href="importer.php">Import par catégories</a><a href="import_selective.php">Imports sélectifs</a><a href="movie_duplicates.php">Regroupement VOD</a></aside><main class="main-content gp-workspace">
 <h1>Import sélectif individuel</h1><a href="importer.php">Retour à l’import par catégories</a>
 <p><?= sel_h($message) ?></p>
 <form method="get"><label>Fournisseur <select name="fournisseur_id"><?php foreach($providers as $f): ?><option value="<?= (int)$f['id'] ?>" <?= $fid===$f['id'] || $fid===(int)$f['id'] ? 'selected':'' ?>><?= sel_h($f['nom']) ?></option><?php endforeach ?></select></label>
@@ -89,4 +89,7 @@ if ($valid) try { $excluded = panel_import_exclusions($pdo,$fid,$kind); } catch 
 <form method="post"><?= panel_csrf_field() ?><input type="hidden" name="snapshot" value="<?= sel_h($snapshot['token']) ?>"><table><tr><th>Contenu</th><th>Conteneur</th><th>Qualité</th><th>Décision</th></tr>
 <?php foreach($view['items'] as $rid=>$s): ?><tr><td><?= sel_h($s['name']??$s['title']??$rid) ?><?= isset($excluded[$rid])?' (exclu)':'' ?></td><td><?= sel_h(panel_import_container($s,$type)) ?></td><td><?= sel_h(panel_import_quality($s)) ?></td><td><select name="choice[<?= hash('sha256',(string)$rid) ?>]"><option value="ignore">Aucune modification</option><option value="import">Importer / lever l’exclusion</option><option value="exclude">Exclure des imports</option></select></td></tr><?php endforeach ?></table><button>Appliquer les choix de cette page</button></form>
 <?php foreach(['Précédente'=>max(1,$view['page']-1),'Suivante'=>min($view['pages'],$view['page']+1)] as $label=>$p): $query=$_GET; $query['page']=$p; ?><a href="?<?= sel_h(http_build_query($query)) ?>"><?= $label ?></a> <?php endforeach ?>
-<?php endif ?></main></body></html>
+<?php endif ?></main>
+
+<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script>
+</body></html>

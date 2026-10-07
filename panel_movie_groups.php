@@ -66,3 +66,11 @@ function movie_candidate_keys(array $row): array {
     if ($title!=='' && preg_match('/^(19|20)[0-9]{2}$/',$year)) $keys[]='titre+année:'.$title.':'.$year;
     return $keys;
 }
+
+// Catalogue identity: only the confirmed primary is listed. Backup URLs remain usable.
+function movie_catalog_visible(PDO $pdo, $id): bool {
+    if (!movie_groups_ready($pdo)) return true;
+    $q=$pdo->prepare('SELECT role FROM movie_group_sources WHERE stream_id=?');
+    $q->execute([$id]); $role=$q->fetchColumn();
+    return $role === false || $role === 'primary';
+}

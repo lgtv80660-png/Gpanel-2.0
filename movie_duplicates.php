@@ -21,13 +21,13 @@ $candidates=[];
 foreach($buckets as $key=>$members) if(count($members)>1 && count(array_unique(array_column($members,'fournisseur_id')))>1) $candidates[$key]=$members;
 $page=max(1,(int)($_GET['page']??1)); $total=count($candidates);
 ?>
-<!doctype html><html lang="fr"><meta charset="utf-8"><title>Doublons films</title>
+<!doctype html><html lang="fr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="assets/gpanel.css"><title>Doublons films</title>
 <style>body{font:16px system-ui;max-width:1000px;margin:30px auto;padding:16px}section{border:1px solid #ccc;padding:16px;margin:16px 0}label{display:block;margin:8px}select,button{padding:8px}</style>
-<a href="admin.php">Administration</a><h1>Doublons entre fournisseurs — films</h1>
-<p>Les propositions restent à confirmer, même avec TMDB/IMDb. Aucun film supprimé, aucun ID modifié. Un principal par groupe. Le secours se demande explicitement avec backup_stream=ID sur vod.php ; aucun basculement automatique après une redirection.</p>
+<body><aside class="sidebar"><div class="brand"><img class="brand-full" src="assets/g-panel-logo-dark.png" alt="G-PANEL V2"></div><div class="gp-section-label">Administration V2</div><a href="admin.php">Tableau de bord</a><a href="editor.php">Gestion des Bouquets</a><a href="importer.php">Import par catégories</a><a href="import_selective.php">Imports sélectifs</a><a href="movie_duplicates.php">Regroupement VOD</a></aside><main class="main-content gp-workspace"><a href="admin.php">Administration</a><h1>Doublons entre fournisseurs — films</h1>
+<p>Une seule fiche visible par groupe confirmé. Les propositions restent à confirmer, même avec TMDB/IMDb. Aucun film supprimé, aucun ID modifié. Un principal par groupe. Les sources de secours restent disponibles sur demande explicite.</p>
 <p><?=dup_h($message)?></p><p><?= $total ?> propositions / groupes. Page <?= $page ?></p>
 <?php foreach(array_slice($candidates,($page-1)*20,20,true) as $key=>$members): ?>
-<section><h2><?=dup_h($key)?></h2><form method="post"><?=panel_csrf_field()?>
+<section class="glass-panel"><h2><?=dup_h($key)?></h2><form method="post"><?=panel_csrf_field()?>
 <?php foreach($members as $r): ?><label>#<?= (int)$r['stream_id'] ?> <?=dup_h($r['stream_name'])?> — <?=dup_h($r['nom'])?>
 <select name="roles[<?= (int)$r['stream_id'] ?>]">
 <?php foreach(['ignore'=>'Ne pas inclure','primary'=>'Principal','backup'=>'Secours','disabled'=>'Désactivé'] as $value=>$label): ?><option value="<?=$value?>" <?=($r['role']??'ignore')===$value?'selected':''?>><?=$label?></option><?php endforeach ?>
@@ -36,3 +36,7 @@ $page=max(1,(int)($_GET['page']??1)); $total=count($candidates);
 <?php if($page>1):?><a href="?page=<?=$page-1?>">Précédent</a><?php endif ?>
 <?php if($page*20<$total):?><a href="?page=<?=$page+1?>">Suivant</a><?php endif ?>
 </html>
+
+</main>
+<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script>
+</body></html>

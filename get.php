@@ -100,7 +100,7 @@ echo "#EXTM3U\n";
 
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     $id = (int)$row['stream_id'];
-    if ($row['stream_type']==='movie' && !movie_source_allowed($pdo,$id)) continue;
+    if ($row['stream_type']==='movie' && !movie_catalog_visible($pdo,$id)) continue;
 
     $name = trim((string)$row['stream_name']);
     $name = str_replace(["\r", "\n", '"'], ' ', $name);

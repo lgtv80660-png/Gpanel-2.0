@@ -62,7 +62,7 @@ echo json_encode(['csrf'=>$_SESSION['panel_csrf'],'lang'=>panel_language()]);
 env=os.environ.copy();env.update(PANEL_COOKIE_SECURE='0',PANEL_STATE_DIR=str(state),FIXTURE_DB=str(db),FIXTURE_DB_TOUCH=str(tmp/'db-touch'),PANEL_ADMIN_PERMISSIONS=json.dumps({'1':['panel:read','panel:manage','catalog:edit','catalog:import','cache:revalidate'],'2':['panel:read']}),PANEL_REVALIDATE_URL='',PANEL_REVALIDATE_SECRET='')
 env.update(FIXTURE_UPSTREAM_COUNT=str(tmp/'upstream-count'),FIXTURE_UPSTREAM_JSON=str(tmp/'upstream.json'))
 (tmp/'upstream.json').write_text(json.dumps({'episodes':{'1':[{'id':'ep-visible','title':'Remote title','container_extension':'mp4'},{'id':'ep-hidden','title':'Hidden remote'},{'id':'ep-new','title':'New episode','container_extension':'mkv'}]},'info':{'name':'Remote series','cover':'Remote cover','plot':'Remote plot'},'seasons':[]}),encoding='utf-8')
-php=[str(Path(args.php).resolve()),'-d','extension_dir='+str(Path(args.ext).resolve()),'-d','extension=pdo_sqlite','-d','extension=mbstring']
+php=[str(Path(args.php).resolve()),'-n','-d','extension_dir='+str(Path(args.ext).resolve()),'-d','extension=pdo_sqlite','-d','extension=mbstring']
 base=f'http://127.0.0.1:{args.port}'
 log=(tmp/'server.log').open('wb');server=subprocess.Popen(php+['-S',f'127.0.0.1:{args.port}','-t',str(web)],env=env,stdout=log,stderr=log)
 def client():return build_opener(HTTPCookieProcessor(http.cookiejar.CookieJar()))

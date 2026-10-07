@@ -15,6 +15,7 @@
     },
   };
   Object.entries(window.PANEL_TRANSLATIONS || {}).forEach(([key, values]) => { ['fr','en','ar'].forEach((lang, i) => LANGS[lang][key] = values[i]); });
+  Object.entries({'Regroupement VOD':['Regroupement VOD','VOD grouping','تجميع الأفلام'],'Imports sélectifs':['Imports sélectifs','Selective imports','استيراد انتقائي'],'Catalogue administré':['Catalogue administré','Managed catalogue','الكتالوج المدار'],'G-PANEL V2 / Administration':['G-PANEL V2 / Administration','G-PANEL V2 / Administration','G-PANEL V2 / الإدارة']}).forEach(([key,values])=>['fr','en','ar'].forEach((lang,i)=>LANGS[lang][key]=values[i]));
   const storageTheme='gpanel.theme';
   let selectedLanguage = ['fr','en','ar'].includes(window.PANEL_CONFIG?.lang) ? window.PANEL_CONFIG.lang : 'fr';
   function currentLang(){return selectedLanguage;}
@@ -127,7 +128,20 @@
     bar.querySelector('#gp-theme-toggle').addEventListener('click',()=>setTheme(currentTheme()==='dark'?'light':'dark'));
     setTheme(currentTheme());
   }
+  function mountNavigation(){
+    const sidebar=document.querySelector('.sidebar'); if(!sidebar) return;
+    sidebar.id='gp-navigation';
+    const toggle=document.createElement('button'); toggle.type='button'; toggle.className='gp-mobile-nav';
+    toggle.textContent='☰ Menu'; toggle.setAttribute('aria-controls',sidebar.id); toggle.setAttribute('aria-expanded','false');
+    const shade=document.createElement('div'); shade.className='gp-nav-shade';
+    const close=()=>{document.body.classList.remove('gp-nav-open');toggle.setAttribute('aria-expanded','false');};
+    toggle.addEventListener('click',()=>{const open=document.body.classList.toggle('gp-nav-open');toggle.setAttribute('aria-expanded',String(open));});
+    shade.addEventListener('click',close); sidebar.querySelectorAll('a').forEach(a=>a.addEventListener('click',close));
+    document.addEventListener('keydown',e=>{if(e.key==='Escape'){close();toggle.focus();}});
+    document.body.append(toggle,shade);
+  }
   function init(){
+    mountNavigation();
     mountToolbar();setTheme(currentTheme());translate();
     const observer=new MutationObserver(()=>{
       observer.disconnect();translate();observer.observe(document.body,{childList:true,subtree:true,characterData:true});
