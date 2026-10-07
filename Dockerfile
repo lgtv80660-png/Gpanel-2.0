@@ -15,7 +15,8 @@ COPY mysql.sql /opt/gpanel/mysql.sql
 COPY deploy/ /opt/gpanel/deploy/
 COPY deploy/apache.conf /etc/apache2/sites-available/000-default.conf
 COPY deploy/php.ini /usr/local/etc/php/conf.d/gpanel.ini
-RUN chmod +x /opt/gpanel/deploy/start.sh \
+RUN sed -i 's/\r$//' /opt/gpanel/deploy/start.sh \
+    && chmod +x /opt/gpanel/deploy/start.sh \
     && mkdir -p /var/lib/gpanel/state \
     && chown -R www-data:www-data /var/lib/gpanel
 
