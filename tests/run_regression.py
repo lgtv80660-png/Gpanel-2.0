@@ -181,6 +181,27 @@ try:
  check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1])['episodes']==[],'disabled provider denied before cached lookup')
  for action in ['get_live_streams','get_vod_streams','get_series','get_live_categories','get_vod_categories','get_series_categories']:
   check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action='+action)[1])==[],'disabled provider excluded from '+action)
+ # Confirmed multi-provider fixture: one API/M3U card, canonical metadata, explicit backup.
+ conn.executescript("""
+ UPDATE fournisseurs SET active=1 WHERE id=1;
+ UPDATE categories SET visible=1 WHERE category_id=10;
+ CREATE TABLE movie_groups(group_id INTEGER PRIMARY KEY,label TEXT);
+ CREATE TABLE movie_group_sources(stream_id INTEGER PRIMARY KEY,group_id INTEGER,role TEXT);
+ CREATE TABLE movie_identifiers(stream_id INTEGER PRIMARY KEY,tmdb_id TEXT,imdb_id TEXT,release_year TEXT);
+ INSERT INTO fournisseurs(id,nom,type,url_base,user,pass,active) VALUES(2,'Synthetic M3U','m3u','https://fixture.invalid','','',1);
+ INSERT INTO streams(stream_id,stream_name,visible,fournisseur_id,category_id,stream_type,container_extension,direct_source,remote_stream_id) VALUES(25,'Backup movie',1,2,10,'movie','mkv','https://fixture.invalid/backup.mkv','backup'),(26,'Disabled movie',1,2,10,'movie','mkv','https://fixture.invalid/disabled.mkv','disabled');
+ INSERT INTO movie_groups VALUES(1,'Confirmed synthetic movie');
+ INSERT INTO movie_group_sources VALUES(20,1,'primary'),(25,1,'backup'),(26,1,'disabled');
+ """);conn.commit()
+ cards=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_streams')[1])
+ check([str(row['stream_id']) for row in cards]==['20'],'confirmed Xtream/M3U group has one VOD card')
+ playlist=request(anonymous,'/get.php?'+credentials)[1]
+ check('/25.' not in playlist and '/26.' not in playlist,'M3U excludes backup and disabled duplicate cards')
+ info=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=25')[1])
+ check(str(info['movie_data']['stream_id'])=='20','backup details resolve canonical primary')
+ try:playback.open(base+'/vod.php?'+credentials+'&stream=20&backup_stream=25')
+ except HTTPError as response:check(response.code==302 and response.headers['Location']=='https://fixture.invalid/backup.mkv','explicit M3U backup redirects without following media')
+ check(request(playback,'/vod.php?'+credentials+'&stream=26')[0]==404,'disabled grouped source refuses playback')
  # Missing config never opens a production connection, and leaks no details.
  proc=subprocess.run(php+[str(source/'config.php')],env={k:v for k,v in env.items() if not k.startswith('MYSQL')},capture_output=True,text=True)
  check(proc.stdout=='Database unavailable.','missing database config fails generically')

@@ -366,7 +366,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                                 <?php foreach ($clients as $c): ?>
                                 <tr>
                                     <td class="fw-bold" data-gp-skip><i class="fas fa-user-circle me-2 text-muted"></i><?= htmlspecialchars($c['username']) ?></td>
-                                    <td><code data-gp-skip><?= htmlspecialchars($c['password']) ?></code></td>
+                                    <td><span aria-label="Mot de passe masqué">••••••••</span></td>
                                     <td><span class="badge-active"><i class="fas fa-circle me-1" style="font-size:8px;"></i> Actif</span></td>
                                     <td class="text-end">
                                         <button class="btn btn-sm btn-info-custom me-1" onclick="showCredentials('<?= htmlspecialchars($c['username']) ?>', '<?= htmlspecialchars($c['password']) ?>')">

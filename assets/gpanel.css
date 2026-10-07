@@ -333,3 +333,5 @@ body:has(.gp-workspace){max-width:none;margin:0;padding:0}
 .gp-workspace select,.gp-workspace button{border-radius:10px;border:1px solid var(--gp-border);padding:10px;background:var(--gp-panel-2);color:var(--gp-text)}
 .gp-workspace button{background:var(--gp-blue);color:#fff}.gp-workspace table{display:block;overflow-x:auto}.gp-workspace p{color:var(--gp-muted);line-height:1.65}
 html[data-theme="light"] .gp-workspace{--gp-panel-2:#fff}
+
+.gp-workspace a,.table a.text-muted{color:var(--gp-cyan)!important}.gp-workspace a:hover{text-decoration:underline}
