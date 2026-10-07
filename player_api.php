@@ -68,7 +68,7 @@ $base_proxy_url = $scheme . '://' . $_SERVER['HTTP_HOST'];
 // 1. CHAÎNES EN DIRECT (LIVE)
 // ==========================================
 if ($action === 'get_live_categories') {
-    $stmt = $pdo->query("SELECT DISTINCT c.category_id, c.category_name, c.parent_id FROM categories c INNER JOIN streams s ON c.category_id = s.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'live' AND c.visible = 1 AND s.visible = 1");
+    $stmt = $pdo->query("SELECT DISTINCT c.category_id, c.category_name, c.parent_id FROM categories c INNER JOIN streams s ON c.category_id = s.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'live' AND c.visible = 1 AND s.visible = 1 AND (af.active=1 OR s.fournisseur_id=0)");
     $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $result = array_map(function($c) { 
         return [
@@ -81,11 +81,11 @@ if ($action === 'get_live_categories') {
 } 
 elseif ($action === 'get_live_streams') {
     if ($cat_id !== '' && $cat_id !== 'all' && $cat_id !== '0') {
-        $stmt = $pdo->prepare("SELECT s.stream_id, s.stream_name, s.stream_icon, s.stream_type, s.category_id FROM streams s INNER JOIN categories c ON s.category_id = c.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'live' AND s.visible = 1 AND c.visible = 1 AND s.category_id = ?");
+        $stmt = $pdo->prepare("SELECT s.stream_id, s.stream_name, s.stream_icon, s.stream_type, s.category_id FROM streams s INNER JOIN categories c ON s.category_id = c.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'live' AND s.visible = 1 AND c.visible = 1 AND (af.active=1 OR s.fournisseur_id=0) AND s.category_id = ?");
         $stmt->execute([$cat_id]);
         $streams = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        $streams = $pdo->query("SELECT s.stream_id, s.stream_name, s.stream_icon, s.stream_type, s.category_id FROM streams s INNER JOIN categories c ON s.category_id = c.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'live' AND s.visible = 1 AND c.visible = 1")->fetchAll(PDO::FETCH_ASSOC);
+        $streams = $pdo->query("SELECT s.stream_id, s.stream_name, s.stream_icon, s.stream_type, s.category_id FROM streams s INNER JOIN categories c ON s.category_id = c.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'live' AND s.visible = 1 AND c.visible = 1 AND (af.active=1 OR s.fournisseur_id=0)")->fetchAll(PDO::FETCH_ASSOC);
     }
     
     $result = array_map(function($s) use ($base_proxy_url, $user, $pass) {
@@ -111,7 +111,7 @@ elseif ($action === 'get_live_streams') {
 // 2. FILMS (VOD)
 // ==========================================
 elseif ($action === 'get_vod_categories') {
-    $stmt = $pdo->query("SELECT DISTINCT c.category_id, c.category_name, c.parent_id FROM categories c INNER JOIN streams s ON c.category_id = s.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'movie' AND c.visible = 1 AND s.visible = 1");
+    $stmt = $pdo->query("SELECT DISTINCT c.category_id, c.category_name, c.parent_id FROM categories c INNER JOIN streams s ON c.category_id = s.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'movie' AND c.visible = 1 AND s.visible = 1 AND (af.active=1 OR s.fournisseur_id=0)");
     $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $result = array_map(function($c) { 
         return [
@@ -124,11 +124,11 @@ elseif ($action === 'get_vod_categories') {
 }
 elseif ($action === 'get_vod_streams') {
     if ($cat_id !== '' && $cat_id !== 'all' && $cat_id !== '0') {
-        $stmt = $pdo->prepare("SELECT s.* FROM streams s INNER JOIN categories c ON s.category_id = c.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'movie' AND s.visible = 1 AND c.visible = 1 AND s.category_id = ? ORDER BY s.stream_id ASC");
+        $stmt = $pdo->prepare("SELECT s.* FROM streams s INNER JOIN categories c ON s.category_id = c.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'movie' AND s.visible = 1 AND c.visible = 1 AND (af.active=1 OR s.fournisseur_id=0) AND s.category_id = ? ORDER BY s.stream_id ASC");
         $stmt->execute([$cat_id]);
         $streams = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        $streams = $pdo->query("SELECT s.* FROM streams s INNER JOIN categories c ON s.category_id = c.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'movie' AND s.visible = 1 AND c.visible = 1 ORDER BY s.stream_id ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $streams = $pdo->query("SELECT s.* FROM streams s INNER JOIN categories c ON s.category_id = c.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'movie' AND s.visible = 1 AND c.visible = 1 AND (af.active=1 OR s.fournisseur_id=0) ORDER BY s.stream_id ASC")->fetchAll(PDO::FETCH_ASSOC);
     }
 
     $result = [];
@@ -171,7 +171,7 @@ elseif ($action === 'get_vod_info') {
     $localVodId = trim((string)($_REQUEST['vod_id'] ?? $_REQUEST['stream_id'] ?? ''));
     if ($localVodId === '') { echo json_encode(['info'=>[], 'movie_data'=>[]]); exit; }
 
-    $stmt = $pdo->prepare("SELECT s.*, f.url_base, f.user, f.pass, f.type FROM streams s INNER JOIN fournisseurs f ON s.fournisseur_id=f.id INNER JOIN categories c ON s.category_id=c.category_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND f.active=1 LIMIT 1");
+    $stmt = $pdo->prepare("SELECT s.*, f.url_base, f.user, f.pass, f.type FROM streams s LEFT JOIN fournisseurs f ON s.fournisseur_id=f.id INNER JOIN categories c ON s.category_id=c.category_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND (f.active=1 OR s.fournisseur_id=0) LIMIT 1");
     $stmt->execute([$localVodId]);
     $movie = $stmt->fetch(PDO::FETCH_ASSOC);
     $movie = movie_resolve($pdo,$localVodId);
@@ -246,7 +246,7 @@ elseif ($action === 'get_vod_info') {
 // 3. SÉRIES & ÉPISODES
 // ==========================================
 elseif ($action === 'get_series_categories') {
-    $stmt = $pdo->query("SELECT DISTINCT c.category_id, c.category_name, c.parent_id FROM categories c INNER JOIN streams s ON c.category_id = s.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'series' AND c.visible = 1 AND s.visible = 1");
+    $stmt = $pdo->query("SELECT DISTINCT c.category_id, c.category_name, c.parent_id FROM categories c INNER JOIN streams s ON c.category_id = s.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'series' AND c.visible = 1 AND s.visible = 1 AND (af.active=1 OR s.fournisseur_id=0)");
     $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $result = array_map(function($c) { 
         return [
@@ -259,11 +259,11 @@ elseif ($action === 'get_series_categories') {
 }
 elseif ($action === 'get_series') {
     if ($cat_id !== '' && $cat_id !== 'all' && $cat_id !== '0') {
-        $stmt = $pdo->prepare("SELECT s.* FROM streams s INNER JOIN categories c ON s.category_id = c.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'series' AND s.visible = 1 AND c.visible = 1 AND s.category_id = ?");
+        $stmt = $pdo->prepare("SELECT s.* FROM streams s INNER JOIN categories c ON s.category_id = c.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'series' AND s.visible = 1 AND c.visible = 1 AND (af.active=1 OR s.fournisseur_id=0) AND s.category_id = ?");
         $stmt->execute([$cat_id]);
         $streams = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        $streams = $pdo->query("SELECT s.* FROM streams s INNER JOIN categories c ON s.category_id = c.category_id INNER JOIN fournisseurs af ON af.id = s.fournisseur_id AND af.active = 1 WHERE s.stream_type = 'series' AND s.visible = 1 AND c.visible = 1")->fetchAll(PDO::FETCH_ASSOC);
+        $streams = $pdo->query("SELECT s.* FROM streams s INNER JOIN categories c ON s.category_id = c.category_id LEFT JOIN fournisseurs af ON af.id = s.fournisseur_id WHERE s.stream_type = 'series' AND s.visible = 1 AND c.visible = 1 AND (af.active=1 OR s.fournisseur_id=0)")->fetchAll(PDO::FETCH_ASSOC);
     }
     
     $result = array_map(function($s) {
@@ -301,13 +301,24 @@ elseif ($action === 'get_series_info') {
 
     $stmt = $pdo->prepare("SELECT s.*, f.url_base, f.user, f.pass, f.type
                            FROM streams s
-                           INNER JOIN fournisseurs f ON s.fournisseur_id = f.id
+                           LEFT JOIN fournisseurs f ON s.fournisseur_id = f.id
                            INNER JOIN categories c ON s.category_id = c.category_id
-                           WHERE s.stream_id = ? AND s.stream_type = 'series' AND s.visible = 1 AND c.visible = 1 AND f.active = 1
+                           WHERE s.stream_id = ? AND s.stream_type = 'series' AND s.visible = 1 AND c.visible = 1 AND (f.active = 1 OR s.fournisseur_id = 0)
                            LIMIT 1");
     $stmt->execute([$local_series_id]);
     $series = $stmt->fetch(PDO::FETCH_ASSOC);
+    if($series){require_once __DIR__.'/panel_content.php';try{$series=content_playback($pdo,$series);}catch(Throwable $e){$series=false;}}
 
+    if ($series && (int)$series['fournisseur_id']===0) {
+        $q=$pdo->prepare("SELECT e.*,x.season_number,x.episode_number FROM content_settings x JOIN streams e ON e.stream_id=x.stream_id JOIN categories c ON c.category_id=e.category_id WHERE x.series_parent=? AND e.fournisseur_id=0 AND e.stream_type='episode' AND e.visible=1 AND c.visible=1 ORDER BY x.season_number,x.episode_number,e.stream_id");
+        $q->execute([$local_series_id]);$episodes=[];$seasons=[];
+        foreach($q as $ep) {
+            $season=(int)$ep['season_number'];$ext=$ep['container_extension']?:'mp4';
+            $episodes[$season][]=['id'=>(string)$ep['stream_id'],'episode_num'=>(int)$ep['episode_number'],'title'=>$ep['stream_name'],'container_extension'=>$ext,'season'=>$season,'info'=>['movie_image'=>$ep['stream_icon'],'plot'=>$ep['vod_plot'],'duration'=>$ep['vod_runtime']],'direct_source'=>$base_proxy_url.'/series/'.rawurlencode($user).'/'.rawurlencode($pass).'/'.$ep['stream_id'].'.'.$ext];
+            $seasons[$season]=['season_number'=>$season,'name'=>'Saison '.$season];
+        }
+        echo json_encode(['episodes'=>$episodes?:new stdClass(),'seasons'=>array_values($seasons),'info'=>['name'=>$series['stream_name'],'cover'=>$series['stream_icon'],'plot'=>$series['vod_plot'],'cast'=>$series['vod_cast'],'director'=>$series['vod_director'],'genre'=>$series['vod_genre'],'releaseDate'=>$series['vod_release_date'],'rating'=>$series['vod_rating']]],JSON_UNESCAPED_UNICODE);exit;
+    }
     if (!$series || $series['type'] !== 'xtream') {
         echo json_encode(['episodes' => [], 'seasons' => [], 'info' => []]);
         exit;
@@ -362,6 +373,7 @@ elseif ($action === 'get_series_info') {
         (fournisseur_id,stream_name,stream_icon,stream_type,category_id,direct_source,container_extension,visible,remote_stream_id)
         VALUES (?,?,?,'episode',?,?,?,?,?)");
 
+    $episodeExcluded=panel_import_exclusions($pdo,(int)$series['fournisseur_id'],'episode');
     foreach ($data['episodes'] as $season_key => &$episodes_list) {
         if (!is_array($episodes_list)) continue;
 
@@ -369,6 +381,7 @@ elseif ($action === 'get_series_info') {
             if (!is_array($ep) || empty($ep['id'])) continue;
 
             $remote_ep_id = trim((string)$ep['id']);
+            if(isset($episodeExcluded[$remote_ep_id])) {unset($episodes_list[$ep_index]);continue;}
             $ep_title = (string)($ep['title'] ?? $ep['name'] ?? 'Episode');
             $ep_icon = (string)($ep['info']['movie_image'] ?? $ep['info']['cover_big'] ?? $series['stream_icon'] ?? '');
             $ep_ext = strtolower(trim((string)($ep['container_extension'] ?? $ep['container_ext'] ?? 'mp4')));
@@ -394,6 +407,7 @@ elseif ($action === 'get_series_info') {
                 $existingEpisodes[$remote_ep_id] = ['stream_id'=>$local_ep_id, 'stream_name'=>$ep_title, 'stream_icon'=>$ep_icon, 'container_extension'=>$ep_ext, 'visible'=>1];
             }
 
+            content_setting($pdo,$local_ep_id,'series_parent',(int)$local_series_id);
             $ep['id'] = (string)$local_ep_id;
             $ep['stream_id'] = (string)$local_ep_id;
             $ep['container_extension'] = $ep_ext;

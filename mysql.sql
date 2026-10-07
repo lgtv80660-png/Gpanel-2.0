@@ -115,3 +115,17 @@ ALTER TABLE `streams`
 CREATE TABLE IF NOT EXISTS movie_groups (group_id INT NOT NULL AUTO_INCREMENT PRIMARY KEY, label VARCHAR(1000) NOT NULL) ENGINE=InnoDB;
 CREATE TABLE IF NOT EXISTS movie_group_sources (stream_id INT NOT NULL PRIMARY KEY, group_id INT NOT NULL, role VARCHAR(16) NOT NULL, KEY idx_movie_group (group_id)) ENGINE=InnoDB;
 CREATE TABLE IF NOT EXISTS movie_identifiers (stream_id INT NOT NULL PRIMARY KEY, tmdb_id VARCHAR(32) DEFAULT NULL, imdb_id VARCHAR(32) DEFAULT NULL, release_year VARCHAR(4) DEFAULT NULL) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS content_settings (
+ stream_id INT NOT NULL PRIMARY KEY,
+ quality VARCHAR(16) DEFAULT NULL,
+ quality_origin VARCHAR(16) DEFAULT NULL,
+ source_override TEXT DEFAULT NULL,
+ source_provider INT DEFAULT NULL,
+ source_remote VARCHAR(255) DEFAULT NULL,
+ series_parent INT DEFAULT NULL,
+ season_number INT DEFAULT NULL,
+ episode_number INT DEFAULT NULL,
+ production_ref VARCHAR(128) DEFAULT NULL,
+ KEY idx_personal_series (series_parent)
+) ENGINE=InnoDB;

@@ -16,7 +16,7 @@ function movie_source_allowed(PDO $pdo, $id): bool {
 }
 function movie_resolve(PDO $pdo, $id, $backup = null) {
     if (!movie_source_allowed($pdo, $id)) return false;
-    $anchor=$pdo->prepare("SELECT s.stream_id FROM streams s JOIN categories c ON c.category_id=s.category_id JOIN fournisseurs f ON f.id=s.fournisseur_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND f.active=1");
+    $anchor=$pdo->prepare("SELECT s.stream_id FROM streams s JOIN categories c ON c.category_id=s.category_id LEFT JOIN fournisseurs f ON f.id=s.fournisseur_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND (f.active=1 OR s.fournisseur_id=0)");
     $anchor->execute([$id]); if (!$anchor->fetchColumn()) return false;
     if ($backup !== null) {
         if (!movie_groups_ready($pdo)) return false;
@@ -28,8 +28,8 @@ function movie_resolve(PDO $pdo, $id, $backup = null) {
         $q=$pdo->prepare("SELECT b.stream_id FROM movie_group_sources a JOIN movie_group_sources b ON a.group_id=b.group_id WHERE a.stream_id=? AND b.role='primary'");
         $q->execute([$id]); $primary=$q->fetchColumn(); if ($primary !== false) $id=$primary;
     }
-    $q=$pdo->prepare("SELECT s.*, f.type, f.url_base, f.user, f.pass FROM streams s JOIN fournisseurs f ON f.id=s.fournisseur_id JOIN categories c ON c.category_id=s.category_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND f.active=1");
-    $q->execute([$id]); return $q->fetch(PDO::FETCH_ASSOC);
+    $q=$pdo->prepare("SELECT s.*, COALESCE(f.type,'m3u') AS type, f.url_base, f.user, f.pass FROM streams s LEFT JOIN fournisseurs f ON f.id=s.fournisseur_id JOIN categories c ON c.category_id=s.category_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND (f.active=1 OR s.fournisseur_id=0)");
+    $q->execute([$id]); $row=$q->fetch(PDO::FETCH_ASSOC); if ($row) {require_once __DIR__.'/panel_content.php'; try{$row=content_playback($pdo,$row);}catch(Throwable $e){return false;}} return $row;
 }
 function movie_confirm(PDO $pdo, array $roles): void {
     if (count($roles)<2 || count($roles)>100 || count(array_filter($roles,fn($r)=>$r==='primary'))!==1) throw new RuntimeException('Choisir au moins deux films et exactement un principal.');

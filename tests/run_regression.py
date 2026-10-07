@@ -36,6 +36,7 @@ api=re.sub(r'function fetch_data_proxy\([^\n]*\) \{.*?\n\}', '''function fetch_d
 (web/'player_api.php').write_text(api,encoding='utf-8')
 db=tmp/'fixture.sqlite';conn=sqlite3.connect(db)
 conn.executescript('''
+CREATE TABLE content_settings(stream_id INTEGER PRIMARY KEY,quality TEXT,quality_origin TEXT,source_override TEXT,source_provider INTEGER,source_remote TEXT,series_parent INTEGER,season_number INTEGER,episode_number INTEGER,production_ref TEXT);
 CREATE TABLE admins(id INTEGER PRIMARY KEY,username TEXT,password TEXT);
 CREATE TABLE import_exclusions(fournisseur_id INTEGER,content_type TEXT,remote_stream_id TEXT,PRIMARY KEY(fournisseur_id,content_type,remote_stream_id));
 INSERT INTO admins VALUES(1,'fixture-admin','fixture-password'),(2,'fixture-restricted','fixture-password');
@@ -89,15 +90,15 @@ try:
   try:request(anonymous,'/__fixture.php');break
   except URLError:time.sleep(.1)
  anonymous=client()
- for route in ['editor.php','importer.php','import_selective.php','revalidate_proxy.php','panel_language.php','panel_diagnostics.php']:
+ for route in ['content_edit.php','personal_content.php','panel_diagnostics_json.php','editor.php','importer.php','import_selective.php','revalidate_proxy.php','panel_language.php','panel_diagnostics.php']:
   for body in [None,{'ajax_action':'toggle_stream','id':'20'}]:
    status,_=request(anonymous,'/'+route,body);check(status==401,route+' anonymous denied')
  check(not (tmp/'db-touch').exists(),'anonymous denied before database access')
  restricted=client();token=json.loads(request(restricted,'/__fixture.php?id=2')[1])['csrf']
- for route in ['editor.php','importer.php','import_selective.php','revalidate_proxy.php']:
+ for route in ['content_edit.php','personal_content.php','editor.php','importer.php','import_selective.php','revalidate_proxy.php']:
   check(request(restricted,'/'+route,{},token)[0]==403,route+' permission denied')
  admin=client();token=json.loads(request(admin,'/__fixture.php')[1])['csrf']
- for route in ['editor.php','importer.php','import_selective.php','revalidate_proxy.php','panel_language.php','admin.php']:
+ for route in ['content_edit.php','personal_content.php','editor.php','importer.php','import_selective.php','revalidate_proxy.php','panel_language.php','admin.php']:
   for bad in [None,'wrong']:
    check(request(admin,'/'+route,{'ajax_action':'toggle_stream','id':'20'},bad)[0]==403,route+' invalid CSRF denied')
  check(not (tmp/'db-touch').exists(),'invalid permissions and CSRF denied before database access')
@@ -109,9 +110,11 @@ try:
  check(request(admin,'/panel_language.php',{'language':'ru'},token)[0]==422,'unsupported language denied')
  check(request(admin,'/revalidate_proxy.php')[0]==405,'revalidation GET denied')
  if args.selective:
+  conn.execute("INSERT INTO streams(stream_id,stream_name,stream_icon,visible,fournisseur_id,category_id,stream_type,container_extension,direct_source,remote_stream_id) VALUES(19,'Disappeared fixture','',1,1,10,'movie','mp4','gone','gone')");conn.commit();initial=snapshot()
   path='/import_selective.php?fournisseur_id=1&kind=movie'
   status,html=request(admin,path,{'load':'1'},token)
   check(status==200 and 'Rejected' in html and '1080p' in html,'selective catalogue renders fixture metadata')
+  check('Disparu du catalogue' in html and 'Disappeared fixture' in html,'missing provider item remains manageable and preserved')
   snap=re.search('name="snapshot" value="([a-f0-9]+)"',html).group(1)
   choices={'snapshot':snap,'choice['+hashlib.sha256(b'remote-20').hexdigest()+']':'import','choice['+hashlib.sha256(b'rejected').hexdigest()+']':'exclude'}
   check(request(admin,path,{**choices,'snapshot':'invalid'},token)[0]==409,'stale snapshot rejected')
@@ -121,7 +124,7 @@ try:
   check(snapshot()==initial,'selected existing item preserves IDs and customizations')
   check(conn.execute('SELECT remote_stream_id FROM import_exclusions').fetchall()==[('rejected',)],'refusal persisted')
   status,html=request(admin,path+'&container=mp4&quality=1080p')
-  check(status==200 and 'Provider rename' in html and 'Rejected' not in html,'container and quality filters render matching contents')
+  check(status==200 and 'Visible' in html and 'Rejected' not in html,'container and quality filters render matching contents')
   check(request(admin,path+'&container=mp4',{'snapshot':snap,'choice['+hashlib.sha256(b'rejected').hexdigest()+']':'import'},token)[0]==422,'filtered-out selection rejected')
   choices={'snapshot':snap,'choice['+hashlib.sha256(b'rejected').hexdigest()+']':'import'}
   request(admin,path,choices,token)
@@ -151,7 +154,7 @@ try:
  check(status==200 and 'panelLogout' in html and 'Gestion Clients' in html,'legacy admin login remains compatible')
  check(request(login,'/editor.php')[0]==200,'login identity permits editor')
  check(snapshot()==initial,'render and login preserve all fixture data')
- diagnostic=json.loads(request(admin,'/panel_diagnostics.php')[1])
+ diagnostic=json.loads(request(admin,'/panel_diagnostics_json.php')[1])
  check(diagnostic['orphan_streams']==0 and diagnostic['catalogue'][0]['total']==1,'diagnostic reports fixture catalogue without secrets')
  # Client API and playback: fixture transport, no provider network requests.
  conn.execute("INSERT INTO streams(stream_id,stream_name,stream_icon,visible,fournisseur_id,category_id,stream_type,container_extension,direct_source,remote_stream_id,vod_plot) VALUES(30,'Custom series','Custom cover',1,1,10,'series',NULL,'series-remote','series-remote','Custom plot')")
@@ -207,6 +210,68 @@ try:
  check(str(info['movie_data']['stream_id'])=='20','backup details resolve canonical primary')
  check(request(playback,'/vod.php?'+credentials+'&stream=20&backup_stream=25')[1]=='fixture-relay:25','explicit M3U backup reaches relay')
  check(request(playback,'/vod.php?'+credentials+'&stream=26')[0]==404,'disabled grouped source refuses playback')
+ # Local content lifecycle, with no provider request; existing clients and providers unchanged.
+ token=json.loads(request(admin,'/__fixture.php')[1])['csrf']
+ personal_ids={};category_ids={}
+ for kind in ['live','movie','series']:
+  status,body=request(admin,'/personal_content.php',{'op':'create_category','name':'Personal '+kind,'kind':kind},token)
+  check(status==200 and 'Catégorie enregistrée' in body,'create personal category '+kind)
+  cid=conn.execute('SELECT category_id FROM categories WHERE fournisseur_id=0 AND content_type=?',(kind,)).fetchone()[0];category_ids[kind]=cid
+  payload={'name':'Personal '+kind+' 1080p','category':cid,'source':'' if kind=='series' else 'https://fixture.invalid/personal-'+kind+'.mp4','icon':'https://fixture.invalid/poster.jpg','extension':'mp4','quality':'720p','visible':1,'plot':'Personal plot','production_ref':'future-production-1'}
+  status,body=request(admin,'/content_edit.php?kind='+kind,payload,token)
+  check(status==200 and 'Enregistré' in body,'create personal content '+kind)
+  personal_ids[kind]=conn.execute('SELECT stream_id FROM streams WHERE fournisseur_id=0 AND stream_type=?',(kind,)).fetchone()[0]
+ request(admin,'/content_edit.php?kind=episode',{'name':'Personal episode','category':category_ids['series'],'source':'https://fixture.invalid/episode.mkv','icon':'','extension':'mkv','parent':personal_ids['series'],'season':2,'episode':3,'visible':1},token)
+ eid=conn.execute("SELECT stream_id FROM streams WHERE fournisseur_id=0 AND stream_type='episode'").fetchone()[0]
+ count_before=(tmp/'upstream-count').read_text()
+ for action,kind,key in [('get_live_streams','live','stream_id'),('get_vod_streams','movie','stream_id'),('get_series','series','series_id')]:
+  data=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action='+action)[1]);check(any(int(x[key])==personal_ids[kind] for x in data),'personal published '+action)
+ data=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id='+str(personal_ids['series']))[1]);check(int(data['episodes']['2'][0]['id'])==eid and data['episodes']['2'][0]['episode_num']==3,'personal series and episode metadata with local IDs')
+ check((tmp/'upstream-count').read_text()==count_before,'personal catalogue never fetches provider')
+ check('Personal live' in request(anonymous,'/get.php?'+credentials)[1] and 'Personal episode' in request(anonymous,'/get.php?'+credentials)[1],'personal M3U live movie episode publication')
+ for route,sid in [('live.php',personal_ids['live']),('series.php',eid)]:check(request(playback,'/'+route+'?'+credentials+'&stream='+str(sid))[0]==302,'personal URL playback '+route)
+ check(request(playback,'/vod.php?'+credentials+'&stream='+str(personal_ids['movie']))[1]=='fixture-relay:'+str(personal_ids['movie']),'personal movie uses existing authenticated relay')
+ request(admin,'/personal_content.php',{'op':'delete_category','id':category_ids['live'],'confirmation':'SUPPRIMER '+str(category_ids['live'])},token)
+ check(conn.execute('SELECT COUNT(*) FROM categories WHERE category_id=?',(category_ids['live'],)).fetchone()[0]==1,'nonempty personal category cannot be deleted')
+ request(admin,'/content_edit.php?id='+str(personal_ids['live']),{'delete':1,'confirmation':'wrong'},token)
+ check(conn.execute('SELECT COUNT(*) FROM streams WHERE stream_id=?',(personal_ids['live'],)).fetchone()[0]==1,'wrong deletion confirmation preserves personal content')
+ # Replacement and quality correction stay independent of the importer refresh.
+ request(admin,'/content_edit.php?id=20',{'name':'Local title','category':10,'source':'https://fixture.invalid/replacement.mp4','icon':'','extension':'mkv','quality':'4K','visible':1,'plot':'Local plot'},token)
+ check(conn.execute('SELECT quality,source_override FROM content_settings WHERE stream_id=20').fetchone()==('4K','https://fixture.invalid/replacement.mp4'),'manual quality and replacement saved separately')
+ check(request(playback,'/vod.php?'+credentials+'&stream=20')[1]=='fixture-relay:20','replacement retains existing playback ID')
+ php_script=tmp/'reimport.php';php_script.write_text("<?php require "+repr(str(web/'config.php').replace('\\','/'))+"; require "+repr(str(web/'panel_import.php').replace('\\','/'))+"; process_and_insert_streams($pdo,1,'movie','xtream',[['stream_id'=>'remote-20','name'=>'Provider rename','category_id'=>'remote-10','height'=>1080]],['remote-10'=>10]);",encoding='utf-8')
+ subprocess.run(php+[str(php_script)],env=env,check=True,capture_output=True)
+ check(conn.execute('SELECT stream_name,vod_plot FROM streams WHERE stream_id=20').fetchone()==('Local title','Local plot') and conn.execute('SELECT quality,source_override FROM content_settings WHERE stream_id=20').fetchone()==('4K','https://fixture.invalid/replacement.mp4'),'reimport retains customization manual quality source override')
+ check(conn.execute('SELECT COUNT(*) FROM streams WHERE fournisseur_id=0').fetchone()[0]==4,'reimport preserves all personal additions')
+ # No provider download: local post-import visibility and exclusions are available immediately.
+ path='/import_selective.php?fournisseur_id=1&kind=movie'
+ html=request(admin,path)[1];snap=re.search('name="snapshot" value="([a-f0-9]+)"',html).group(1);key='choice['+hashlib.sha256(b'remote-20').hexdigest()+']'
+ check('Importé' in html and 'Local title' in html,'local post-import catalogue recognizes existing contents')
+ request(admin,path,{'snapshot':snap,key:'deactivate'},token);check(conn.execute('SELECT visible FROM streams WHERE stream_id=20').fetchone()[0]==0,'post-import deactivate preserves ID')
+ request(admin,path,{'snapshot':snap,key:'reactivate'},token);request(admin,path,{'snapshot':snap,key:'exclude'},token)
+ check(conn.execute('SELECT visible FROM streams WHERE stream_id=20').fetchone()[0]==1 and conn.execute("SELECT COUNT(*) FROM import_exclusions WHERE remote_stream_id='remote-20'").fetchone()[0]==1,'reactivation and future exclusion are independent')
+ request(admin,path,{'category_action':'exclude','local_category':10},token)
+ check(conn.execute("SELECT COUNT(*) FROM import_exclusions WHERE content_type='movie-category' AND remote_stream_id='remote-10'").fetchone()[0]==1,'category exclusion persisted without content deletion')
+ request(admin,path,{'category_action':'import','local_category':10},token)
+ request(admin,path,{'category_action':'rename','local_category':10,'category_name':'Renamed category'},token)
+ check(conn.execute('SELECT category_name FROM categories WHERE category_id=10').fetchone()[0]=='Renamed category','post-import category rename preserves category ID')
+ request(admin,path,{'category_action':'delete','local_category':10,'confirmation':'SUPPRIMER 10'},token)
+ check(conn.execute('SELECT COUNT(*) FROM categories WHERE category_id=10').fetchone()[0]==1,'nonempty supplier category cannot be implicitly deleted')
+ conn.execute("INSERT INTO categories(category_id,category_name,visible,fournisseur_id,remote_category_id,content_type,parent_id) VALUES(50000,'Supplier series',1,1,'remote-series-cat','series',0)");conn.commit()
+ request(admin,'/content_edit.php?id=30',{'name':'Custom series','category':50000,'source':'','icon':'','extension':'mp4','source_provider':1,'source_remote':'replacement-series','visible':1},token)
+ check(conn.execute('SELECT source_provider,source_remote FROM content_settings WHERE stream_id=30').fetchone()==(1,'replacement-series'),'series source replacement stored independently of identity')
+ data=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1]);check(data['episodes']['1'][0]['id']=='31','series replacement retains local episode IDs with fixture transport')
+ # Hide a series and deny its personal episode in metadata, playback and M3U.
+ conn.execute('UPDATE streams SET visible=0 WHERE stream_id=?',(personal_ids['series'],));conn.commit()
+ check(request(playback,'/series.php?'+credentials+'&stream='+str(eid))[0]==404,'inactive personal parent denies episode playback')
+ check('Personal episode' not in request(anonymous,'/get.php?'+credentials)[1],'inactive personal series excludes episode from M3U')
+ conn.execute('UPDATE streams SET visible=1 WHERE stream_id=?',(personal_ids['series'],));conn.commit()
+ request(admin,'/content_edit.php?id='+str(eid),{'delete':1,'confirmation':'SUPPRIMER '+str(eid)},token)
+ check(conn.execute('SELECT COUNT(*) FROM streams WHERE stream_id=?',(eid,)).fetchone()[0]==0,'explicit personal episode deletion')
+ status,body=request(admin,'/panel_diagnostics.php');check(status==200 and '<h1>Diagnostic &amp; Santé</h1>' in body and 'content-v2.css' in body,'diagnostic premium HTML')
+ if os.environ.get('CONTENT_UI'):
+  ui_env={**os.environ,'FIXTURE_BASE':base}
+  subprocess.run([os.environ['NODE_EXE'],str(source/'tests/content_ui.cjs')],env=ui_env,check=True)
  # Missing config never opens a production connection, and leaks no details.
  proc=subprocess.run(php+[str(source/'config.php')],env={k:v for k,v in env.items() if not k.startswith('MYSQL')},capture_output=True,text=True)
  check(proc.stdout=='Database unavailable.','missing database config fails generically')

@@ -156,7 +156,7 @@
 /* Shared admin finishing layer: keeps all existing forms and handlers intact. */
 document.addEventListener('DOMContentLoaded', function () {
   if (!window.PANEL_CONFIG?.authenticated) return;
-  const links = [['admin.php','Tableau de bord','◈'],['editor.php','Gestion des Bouquets','▦'],['importer.php','Import par catégories','⇩'],['import_selective.php','Imports sélectifs','☷'],['movie_duplicates.php','Regroupement VOD','▷']];
+  const links = [['admin.php','Tableau de bord','◈'],['editor.php','Gestion des Bouquets','▦'],['importer.php','Import par catégories','⇩'],['import_selective.php','Imports sélectifs','☷'],['personal_content.php','Contenus personnels','＋'],['panel_diagnostics.php','Diagnostic & Santé','♡'],['movie_duplicates.php','Regroupement VOD','▷']];
   let sidebar = document.querySelector('.sidebar');
   if (!sidebar) {
     sidebar = document.createElement('aside'); sidebar.className = 'sidebar';

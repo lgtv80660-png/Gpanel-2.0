@@ -69,12 +69,13 @@ $sql = "
         s.container_extension,
         c.category_name
     FROM streams s
-    INNER JOIN fournisseurs f
+    LEFT JOIN fournisseurs f
         ON f.id = s.fournisseur_id
     INNER JOIN categories c ON c.category_id = s.category_id
     WHERE s.visible = 1
       AND c.visible = 1
-      AND f.active = 1
+      AND (f.active = 1 OR s.fournisseur_id = 0)
+      AND (s.stream_type <> 'episode' OR NOT EXISTS (SELECT 1 FROM content_settings px LEFT JOIN streams ps ON ps.stream_id=px.series_parent LEFT JOIN categories pc ON pc.category_id=ps.category_id WHERE px.stream_id=s.stream_id AND px.series_parent IS NOT NULL AND (ps.stream_id IS NULL OR pc.category_id IS NULL OR ps.visible<>1 OR pc.visible<>1)))
       AND s.stream_type IN ('live', 'movie', 'episode')
     ORDER BY
         s.stream_type,

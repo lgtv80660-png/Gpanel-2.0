@@ -85,11 +85,7 @@ if (isset($_POST['update_stream'])) {
 }
 
 if (isset($_POST['delete_stream'])) {
-    $stmt = $pdo->prepare("DELETE FROM streams WHERE stream_id = ?");
-    if($stmt->execute([$_POST['stream_id']])) {
-        notifyNextJsApp();
-        $message = '<div class="alert alert-warning"><i class="fas fa-trash"></i> Flux supprimé définitivement.</div>';
-    }
+    header('Location: content_edit.php?id='.(int)($_POST['stream_id']??0));exit;
 }
 
 // --- RÉCUPÉRATION DES FOURNISSEURS POUR LE FILTRE ---

@@ -8,8 +8,8 @@ function panel_import_lock(PDO $pdo, int $fid, bool $release = false): void {
 }
 function panel_import_require_transactions(PDO $pdo): void {
     if ($pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') return;
-    $rows = $pdo->query("SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('streams','categories','import_exclusions')")->fetchAll(PDO::FETCH_KEY_PAIR);
-    if (count($rows) !== 3 || array_filter($rows, function ($engine) { return strcasecmp($engine, 'InnoDB') !== 0; })) {
+    $rows = $pdo->query("SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('streams','categories','import_exclusions','content_settings')")->fetchAll(PDO::FETCH_KEY_PAIR);
+    if (count($rows) !== 4 || array_filter($rows, function ($engine) { return strcasecmp($engine, 'InnoDB') !== 0; })) {
         throw new RuntimeException('Run the reviewed V2 migration on a backup before importing.');
     }
 }
@@ -25,12 +25,13 @@ function panel_import_categories(PDO $pdo, int $fid, string $kind, array $remote
     $insert = $pdo->prepare('INSERT INTO categories (category_name,parent_id,visible,fournisseur_id,remote_category_id,content_type) VALUES (?,0,1,?,?,?)');
     $map = [];
     $selected = array_map('strval', $selected);
+    $categoryExcluded=panel_import_exclusions($pdo,$fid,$kind.'-category');
     foreach ($remote as $category) {
         if (!is_array($category)) continue;
         $name = trim((string)($category['category_name'] ?? $category['title'] ?? $category['name'] ?? 'Général'));
         $rid = trim((string)($category['category_id'] ?? $category['id'] ?? ''));
         if ($rid === '') $rid = $name;
-        if (!in_array($rid, $selected, true)) continue;
+        if (!in_array($rid, $selected, true) || isset($categoryExcluded[$rid])) continue;
         if (!isset($known[$rid])) {
             $insert->execute([mb_substr('['.$provider.'] '.$name, 0, 100, 'UTF-8'), $fid, $rid, $kind]);
             $known[$rid] = (int)$pdo->lastInsertId();
@@ -82,22 +83,19 @@ function panel_import_container(array $s, string $type): string {
     // A codec label is never a container. Unknown extensions stay unknown.
     return in_array($ext, ['mp4','mkv','avi','ts','m2ts','mov','wmv','flv','webm','m4v','mpg','mpeg','m3u8'], true) ? $ext : 'unknown';
 }
-function panel_import_quality(array $s): string {
-    $video = $s['video'] ?? $s['info']['video'] ?? [];
-    $height = $s['height'] ?? (is_array($video) ? ($video['height'] ?? null) : null);
-    if (is_numeric($height) && (int)$height > 0) {
-        if ((int)$height >= 2160) return '4K';
-        if ((int)$height >= 1080) return '1080p';
-        if ((int)$height >= 720) return '720p';
-        return 'unknown';
-    }
-    // Only explicit resolution metadata, never names, codecs or bitrate guesses.
-    $resolution = (string)($s['resolution'] ?? $s['quality'] ?? '');
-    if (preg_match('/^(?:3840x2160|4096x2160|2160p|4k)$/i', $resolution)) return '4K';
-    if (preg_match('/^(?:1920x1080|1080p)$/i', $resolution)) return '1080p';
-    if (preg_match('/^(?:1280x720|720p)$/i', $resolution)) return '720p';
-    return 'unknown';
+function panel_import_quality_details(array $s): array {
+    if (!empty($s['_quality'])) return ['value'=>$s['_quality'],'origin'=>$s['_quality_origin']??'manual'];
+    $video=$s['video']??$s['info']['video']??[];
+    $height=$s['height']??(is_array($video)?($video['height']??null):null);
+    if (is_numeric($height) && (int)$height>0) return ['value'=>$height>=2160?'4K':($height>=1080?'1080p':($height>=720?'720p':'SD')),'origin'=>'verified'];
+    $resolution=trim((string)($s['resolution']??$s['quality']??''));
+    foreach (['4K'=>'/^(?:3840x2160|4096x2160|2160p|4k)$/i','1080p'=>'/^(?:1920x1080|1080p)$/i','720p'=>'/^(?:1280x720|720p)$/i','SD'=>'/^(?:SD|480p|576p|720x480|720x576)$/i'] as $quality=>$pattern) if(preg_match($pattern,$resolution)) return ['value'=>$quality,'origin'=>'verified'];
+    $title=(string)($s['name']??$s['title']??$s['stream_name']??'');
+    $found=[];
+    foreach(['4K'=>'4K|2160p','1080p'=>'1080p','720p'=>'720p','SD'=>'SD|480p|576p'] as $q=>$token) if(preg_match('/(?<![a-z0-9])(?:'.$token.')(?![a-z0-9])/i',$title)) $found[]=$q;
+    return count($found)===1?['value'=>$found[0],'origin'=>'estimated']:['value'=>'unknown','origin'=>'unknown'];
 }
+function panel_import_quality(array $s): string {return panel_import_quality_details($s)['value'];}
 function panel_import_exclusions(PDO $pdo, int $fid, string $kind): array {
     $stmt = $pdo->prepare('SELECT remote_stream_id FROM import_exclusions WHERE fournisseur_id = ? AND content_type = ?');
     $stmt->execute([$fid, $kind]);
@@ -175,6 +173,16 @@ function process_and_insert_streams($pdo, $fid, $kind, $type, $items, $catMap) {
         $stmt->execute($values);
     }
     
+    try { $pdo->query('SELECT 1 FROM content_settings LIMIT 1'); $qualityReady=true; }
+    catch (PDOException $e) {if ($e->getCode()!=='42S02' && strpos($e->getMessage(),'no such table')===false)throw $e;$qualityReady=false;}
+    if ($qualityReady) {
+        require_once __DIR__.'/panel_content.php';
+        $ids=panel_import_existing($pdo,(int)$fid,$kind);
+        foreach($items as $item){if(!is_array($item))continue;$rid=panel_import_identity($item,$type);if(!isset($ids[$rid])||isset($excluded[$rid])||!isset($seen[$rid]))continue;
+            $qd=panel_import_quality_details($item);$current=content_settings($pdo,$ids[$rid]);
+            if(($current['quality_origin']??'')!=='manual' && $qd['value']!=='unknown' && !(($current['quality_origin']??'')==='verified'&&$qd['origin']==='estimated')){content_setting($pdo,$ids[$rid],'quality',$qd['value']);content_setting($pdo,$ids[$rid],'quality_origin',$qd['origin']);}
+        }
+    }
     if ($kind === 'movie') {
         require_once __DIR__.'/panel_movie_groups.php';
         if (movie_groups_ready($pdo)) {

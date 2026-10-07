@@ -32,7 +32,7 @@ try:
  check(status==302,'admin login redirects after authentication')
  status,body,_=request('/admin.php')
  check(status==200 and 'Gestion Clients' in body,'synthetic admin login succeeds')
- status,body,_=request('/panel_diagnostics.php');check(status==200 and json.loads(body)['orphan_streams']==0,'authenticated diagnostic and MySQL catalogue')
+ status,body,_=request('/panel_diagnostics_json.php');check(status==200 and json.loads(body)['orphan_streams']==0,'authenticated diagnostic and MySQL catalogue')
  credentials=urlencode({'username':'gpanel-test-client','password':client_password})
  for action in ['get_live_categories','get_vod_categories','get_series_categories','get_live_streams','get_vod_streams','get_series']:
   status,body,_=request('/player_api.php?'+credentials+'&action='+action)
