@@ -50,7 +50,8 @@ try:
   path='/'+kind+'/gpanel-test-client/'+quote(client_password,safe='')+'/'+stream+'.'+ext
   status,body,headers=request(path)
   location=next((value for key,value in headers.items() if key.lower()=='location'),'')
-  check(status==302 and location.startswith('http://127.0.0.1:'),'Apache rewrite and '+kind+' fixture redirect, not followed (status '+str(status)+')')
+  if kind=='movie':check(status==200 and body=='GPANEL-SYNTHETIC-MEDIA-v1' and not location,'Apache VOD rewrite relays synthetic bytes without provider URL')
+  else:check(status==302 and location.startswith('http://127.0.0.1:'),'Apache rewrite and '+kind+' fixture redirect, not followed (status '+str(status)+')')
  print('PASS deployment smoke tests; real media playback NOT tested')
 except Exception as error:
  print('FAIL '+(str(error) if isinstance(error,RuntimeError) else 'Unexpected response; credentials suppressed'),file=sys.stderr)

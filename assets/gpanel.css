@@ -335,3 +335,15 @@ body:has(.gp-workspace){max-width:none;margin:0;padding:0}
 html[data-theme="light"] .gp-workspace{--gp-panel-2:#fff}
 
 .gp-workspace a,.table a.text-muted{color:var(--gp-cyan)!important}.gp-workspace a:hover{text-decoration:underline}
+/* Final shared admin surfaces, including import selection and progress. */
+.gp-nav-icon{display:inline-flex;width:22px;justify-content:center;color:var(--gp-cyan);font-size:20px}
+.sidebar a:focus-visible .gp-nav-icon,.sidebar a:hover .gp-nav-icon{animation:gp-icon-pop .45s ease}
+.gp-skip{position:fixed;top:-80px;left:20px;z-index:3000;padding:12px 18px;background:var(--gp-panel-2);color:var(--gp-text);border:2px solid var(--gp-cyan);border-radius:12px}.gp-skip:focus{top:12px}
+.gp-empty{text-align:center!important;padding:36px!important;color:var(--gp-muted)}
+input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:3px solid var(--gp-cyan);outline-offset:3px}
+.gp-workspace input:not([type=checkbox]):not([type=radio]),.gp-workspace textarea{max-width:100%;padding:10px 12px;background:var(--gp-panel-2);color:var(--gp-text);border:1px solid var(--gp-border);border-radius:10px}
+.table-responsive{max-width:100%;overflow:auto}.table-responsive table{min-width:560px;width:100%}.gp-workspace table{display:table}
+.gp-import-card,.cat-list,.top-bar,.gp-import-top{background:var(--gp-panel)!important;color:var(--gp-text)!important;border-color:var(--gp-border)!important;border-radius:18px}.cat-item{border-color:var(--gp-border)!important}.gp-import-shell{max-width:1400px!important}.gp-import-progress{padding:32px 32px 32px 300px!important;font-family:Inter,system-ui,sans-serif!important}.gp-import-progress .sidebar .brand{font-size:20px!important}
+@media(min-width:641px) and (max-width:1000px){.sidebar{width:240px!important}.main-content{margin-left:240px!important}html[dir=rtl] .main-content{margin-left:0!important;margin-right:240px!important}.sidebar .brand .brand-full{display:block!important}.sidebar a{font-size:13px!important}.gp-import-progress{padding-left:270px!important}}
+@media(max-width:640px){.gp-import-progress{padding:70px 16px 24px!important}.gp-import-top,.top-bar{position:static!important;flex-wrap:wrap;padding:16px!important;margin:0 0 20px!important}.gp-import-card{padding:20px!important}.gp-workspace form{padding:16px}.gp-workspace label{display:block;margin-bottom:12px}.modal-dialog{margin:12px!important}.modal-content{max-height:calc(100dvh - 24px);overflow:auto}.btn,button,select,input:not([type=checkbox]):not([type=radio]){min-height:44px}.gp-nav-icon{flex-shrink:0}}
+@media(prefers-reduced-motion:reduce){.sidebar a:hover .gp-nav-icon,.sidebar a:focus-visible .gp-nav-icon{animation:none!important}}

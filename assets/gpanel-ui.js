@@ -152,3 +152,51 @@
   window.GPanelUI={setLang,setTheme,translate,t,LANGS};
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init); else init();
 })();
+
+/* Shared admin finishing layer: keeps all existing forms and handlers intact. */
+document.addEventListener('DOMContentLoaded', function () {
+  if (!window.PANEL_CONFIG?.authenticated) return;
+  const links = [['admin.php','Tableau de bord','◈'],['editor.php','Gestion des Bouquets','▦'],['importer.php','Import par catégories','⇩'],['import_selective.php','Imports sélectifs','☷'],['movie_duplicates.php','Regroupement VOD','▷']];
+  let sidebar = document.querySelector('.sidebar');
+  if (!sidebar) {
+    sidebar = document.createElement('aside'); sidebar.className = 'sidebar';
+    const brand = document.createElement('div'); brand.className = 'brand'; brand.textContent = 'G-PANEL V2';
+    sidebar.append(brand); document.body.prepend(sidebar);
+    const footer=document.querySelector('.gp-sidebar-footer'); if(footer)sidebar.append(footer);
+    const shell = document.querySelector('.gp-import-shell,.container') || document.querySelector('.top-bar')?.parentElement;
+    if (shell && shell !== document.body) shell.classList.add('main-content');
+    else document.body.classList.add('gp-import-progress');
+    // UI initialized before this finishing layer: initialize navigation once.
+    const toggle = document.createElement('button'); toggle.type='button'; toggle.className='gp-mobile-nav'; toggle.textContent='☰ Menu';
+    toggle.setAttribute('aria-controls','gp-navigation'); toggle.setAttribute('aria-expanded','false'); sidebar.id='gp-navigation';
+    toggle.onclick=()=>{const open=document.body.classList.toggle('gp-nav-open');toggle.setAttribute('aria-expanded',String(open));};
+    document.body.append(toggle);
+  }
+  sidebar.setAttribute('aria-label','Navigation administration');
+  links.forEach(([href,label,icon])=>{
+    let a=Array.from(sidebar.querySelectorAll('a')).find(a=>a.getAttribute('href')===href);
+    if (!a) { a=document.createElement('a'); a.href=href; a.textContent=label; sidebar.insertBefore(a,sidebar.querySelector('.gp-sidebar-footer')); }
+    if (!a.querySelector('i,.gp-nav-icon')) { const span=document.createElement('span'); span.className='gp-nav-icon';span.textContent=icon;span.setAttribute('aria-hidden','true');a.prepend(span); }
+    if (location.pathname.endsWith('/'+href)) { a.classList.add('active'); a.setAttribute('aria-current','page'); }
+  });
+  document.querySelectorAll('.alert').forEach(el=>{el.setAttribute('role',el.classList.contains('alert-danger')?'alert':'status');});
+  document.querySelectorAll('table').forEach(table=>{
+    if (!table.closest('.table-responsive')) {const wrapper=document.createElement('div');wrapper.className='table-responsive';table.before(wrapper);wrapper.append(table);}
+    if (table.tBodies.length && !table.tBodies[0].rows.length) {const row=table.tBodies[0].insertRow();const cell=row.insertCell();cell.colSpan=Math.max(1,table.querySelectorAll('thead th').length);cell.className='gp-empty';cell.textContent='Aucun élément à afficher. Ajustez les filtres ou ajoutez un élément.';}
+  });
+  const main=document.querySelector('main,.main-content');
+  if(main){main.id='gp-main';main.tabIndex=-1;const skip=document.createElement('a');skip.href='#gp-main';skip.className='gp-skip';skip.textContent='Aller au contenu';document.body.prepend(skip);}
+  document.querySelectorAll('button,a').forEach(el=>{
+    if(!el.textContent.trim() && !el.getAttribute('aria-label')) {const title=el.getAttribute('title');if(title)el.setAttribute('aria-label',title);}
+    el.querySelectorAll('i').forEach(icon=>icon.setAttribute('aria-hidden','true'));
+  });
+  const toggle=document.querySelector('.gp-mobile-nav');
+  const close=()=>{document.body.classList.remove('gp-nav-open');toggle?.setAttribute('aria-expanded','false');};
+  document.addEventListener('keydown',e=>{
+    if(!document.body.classList.contains('gp-nav-open'))return;
+    if(e.key==='Escape'){close();toggle?.focus();}
+    if(e.key==='Tab') {const items=[toggle,...sidebar.querySelectorAll('a,button,select')].filter(el=>el && el.offsetParent!==null);const first=items[0],last=items.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}
+  });
+  sidebar.querySelectorAll('a').forEach(a=>a.addEventListener('click',close));
+  window.GPanelUI?.translate();
+});

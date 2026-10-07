@@ -19,3 +19,14 @@ check(in_array('titre+année:film:2020',movie_candidate_keys(['stream_name'=>'Fi
 check(movie_candidate_keys(['stream_name'=>'Film'])===[]);
 try { movie_confirm($p,[1=>'primary',2=>'primary']); throw new LogicException('Validation missing'); } catch(RuntimeException $e) {}
 echo "Movie grouping fixture OK\n";
+require __DIR__.'/../panel_vod_relay.php';
+$p->exec('UPDATE fournisseurs SET active=1 WHERE id=2');
+check(array_column(vod_candidates($p,1),'stream_id')===[1,2]);
+check(array_column(vod_candidates($p,2),'stream_id')===[1,2]);
+check(array_column(vod_candidates($p,1,2),'stream_id')===[2]);
+check(vod_candidates($p,3)===[]);
+check(vod_candidates($p,1,3)===[]);
+$p->exec('UPDATE streams SET visible=0 WHERE stream_id=2');
+check(array_column(vod_candidates($p,1),'stream_id')===[1]);
+check(vod_source_url(['type'=>'m3u','direct_source'=>"http://fixture/\r\nInjected: yes"])===null);
+echo "VOD candidate permissions fixture OK\n";

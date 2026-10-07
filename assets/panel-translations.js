@@ -580,3 +580,12 @@ window.PANEL_TRANSLATIONS = {
     "قاعدة البيانات غير متاحة."
   ]
 };
+Object.assign(window.PANEL_TRANSLATIONS, {
+ 'Import par catégories':['Import par catégories','Import by category','استيراد حسب الفئة'],
+ 'Aller au contenu':['Aller au contenu','Skip to content','انتقل إلى المحتوى'],
+ 'Aucun élément à afficher. Ajustez les filtres ou ajoutez un élément.':['Aucun élément à afficher. Ajustez les filtres ou ajoutez un élément.','No items to show. Adjust the filters or add an item.','لا توجد عناصر. عدّل الفلاتر أو أضف عنصراً.']
+});
+Object.assign(window.PANEL_TRANSLATIONS, {
+ '☰ Menu':['☰ Menu','☰ Menu','☰ القائمة'],
+ 'Diagnostic catalogue V2':['Diagnostic catalogue V2','V2 catalogue diagnostics','تشخيص الكتالوج V2']
+});

@@ -11,6 +11,10 @@ source=Path(__file__).resolve().parents[1]
 tmp=Path(tempfile.mkdtemp(prefix='panel-regression-'));web=tmp/'web';web.mkdir();state=tmp/'state';state.mkdir()
 for f in source.glob('*.php'):shutil.copy2(f,web/f.name)
 shutil.copytree(source/'assets',web/'assets')
+# Authentication/catalogue regression isolates transport; actual relay is tested separately.
+(web/'panel_vod_relay.php').write_text((source/'panel_vod_relay.php').read_text().split('function vod_relay(')[0] + '''function vod_relay(array $rows, string $extension, string $method, string $range = ''): void {
+ echo 'fixture-relay:'.$rows[0]['stream_id'];
+}''', encoding='utf-8')
 # Replace the provider transport only in the disposable copy; no provider request is made.
 importer=(web/'importer.php').read_text(encoding='utf-8')
 importer=re.sub(r'function fetch_data_stream\([^\n]*\) \{.*?\n\}', '''function fetch_data_stream($url, $headers = []) {
@@ -169,8 +173,10 @@ try:
   def redirect_request(self,*args,**kwargs):return None
  playback=build_opener(NoRedirect())
  for route,stream,expected in [('live.php','40','live/fixture/fixture/live-remote.ts'),('vod.php','20','movie/fixture/fixture/remote-20.mp4'),('series.php','31','series/fixture/fixture/ep-visible.mkv')]:
-  try:playback.open(base+'/'+route+'?'+credentials+'&stream='+stream)
-  except HTTPError as response:check(response.code==302 and response.headers['Location'].endswith(expected),route+' fixture playback redirect')
+  if route=='vod.php':check(request(playback,'/'+route+'?'+credentials+'&stream='+stream)[1]=='fixture-relay:20','legacy VOD route reaches authenticated relay')
+  else:
+   try:playback.open(base+'/'+route+'?'+credentials+'&stream='+stream)
+   except HTTPError as response:check(response.code==302 and response.headers['Location'].endswith(expected),route+' fixture playback redirect')
   check(request(anonymous,'/'+route+'?username=visible&password=wrong&stream='+stream)[0]==401,route+' rejects invalid client')
  conn.execute('UPDATE categories SET visible=0 WHERE category_id=10');conn.commit()
  for route,stream in [('live.php','40'),('vod.php','20'),('series.php','31')]:check(request(anonymous,'/'+route+'?'+credentials+'&stream='+stream)[0]==404,route+' hidden category denied')
@@ -199,8 +205,7 @@ try:
  check('/25.' not in playlist and '/26.' not in playlist,'M3U excludes backup and disabled duplicate cards')
  info=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=25')[1])
  check(str(info['movie_data']['stream_id'])=='20','backup details resolve canonical primary')
- try:playback.open(base+'/vod.php?'+credentials+'&stream=20&backup_stream=25')
- except HTTPError as response:check(response.code==302 and response.headers['Location']=='https://fixture.invalid/backup.mkv','explicit M3U backup redirects without following media')
+ check(request(playback,'/vod.php?'+credentials+'&stream=20&backup_stream=25')[1]=='fixture-relay:25','explicit M3U backup reaches relay')
  check(request(playback,'/vod.php?'+credentials+'&stream=26')[0]==404,'disabled grouped source refuses playback')
  # Missing config never opens a production connection, and leaks no details.
  proc=subprocess.run(php+[str(source/'config.php')],env={k:v for k,v in env.items() if not k.startswith('MYSQL')},capture_output=True,text=True)
