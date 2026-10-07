@@ -227,12 +227,12 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         .copy-box { background: var(--bg-dark); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); font-family: monospace; font-size: 13px; margin-bottom: 15px; word-break: break-all; }
         .copy-box span { color: var(--accent); }
     </style>
-    <link rel="stylesheet" href="assets/gpanel.css">
+    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css">
 <?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript></head>
-<body>
+<body class="dashboard-v2">
 <form id="panelLogout" method="POST" hidden><?= panel_csrf_field() ?><input name="logout" value="1"></form>
     <aside class="sidebar">
-        <div class="brand"><img class="brand-full" src="assets/g-panel-logo.png" alt="G-PANEL"><img class="brand-mark" src="assets/g-panel-mark.png" alt="G-PANEL"></div><div class="gp-brand-mini">IPTV MANAGEMENT SYSTEM</div>
+        <div class="brand"><img class="brand-full" src="assets/g-panel-logo-dark.png" alt="G-PANEL"><img class="brand-mark" src="assets/g-panel-mark.png" alt="G-PANEL"></div><div class="gp-brand-mini">IPTV MANAGEMENT SYSTEM</div>
         <div class="gp-section-label">Navigation</div><a href="admin.php" class="active"><i class="fas fa-tachometer-alt"></i> Tableau de bord</a>
         <a href="editor.php"><i class="fas fa-folder-open"></i> Gestion des Bouquets</a>
         <div class="gp-section-label">Gestion</div><a href="#clients"><i class="fas fa-users"></i> Gestion Clients</a>
@@ -263,45 +263,34 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
 
         <?= $message ?>
 
-        <div class="row mb-4">
-            <div class="col-md-6">
-                <div class="glass-panel stat-card">
-                    <div class="icon"><i class="fas fa-users"></i></div>
-                    <div>
-                        <h3><?= $total_clients ?></h3>
-                        <p>Clients Actifs</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6">
-                <div class="glass-panel stat-card">
-                    <div class="icon"><i class="fas fa-satellite-dish"></i></div>
-                    <div>
-                        <h3><?= $total_sources ?></h3>
-                        <p>Sources Connectées</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-xl-4">
-                <div class="glass-panel" id="clients">
-                    <h5 class="mb-4"><i class="fas fa-user-plus text-primary me-2"></i> Nouveau Client</h5>
+        <section class="dashboard-hero">
+            <div class="hero-copy"><span class="hero-status"><span></span> Administration en ligne</span>
+            <p class="hero-breadcrumb">Administration / Tableau de bord</p><h2>Bonjour, Admin</h2>
+            <p class="hero-description">Pilotez vos clients, vos sources et votre catalogue IPTV depuis une seule interface.</p>
+            <div class="hero-actions"><button type="button" class="btn hero-primary" onclick="purgeNextJsCache()"><i class="fas fa-bolt"></i> Synchro app G-TV</button><a href="importer.php" class="btn hero-secondary"><i class="fas fa-sync-alt"></i> Forcer l'importation</a></div></div>
+            <div class="hero-metrics"><div><i class="fas fa-users"></i><span>Clients<b><?= $total_clients ?></b></span></div><div><i class="fas fa-server"></i><span>Sources configurées<b><?= $total_sources ?></b></span></div><div><i class="fas fa-shield-alt"></i><span>Catalogue<b>Administré</b></span></div></div>
+            <svg class="hero-wave" viewBox="0 0 1200 100" preserveAspectRatio="none" aria-hidden="true"><path d="M0 70 Q150 10 300 65 T600 45 T900 65 T1200 40 M0 90 Q150 30 300 85 T600 65 T900 85 T1200 60" fill="none" stroke="white" stroke-opacity=".17" stroke-width="2" stroke-dasharray="6 12"/></svg>
+        </section>
+        <p class="shortcut-label">RACCOURCIS</p><div class="dashboard-shortcuts"><a href="movie_duplicates.php"><i class="fas fa-layer-group"></i> Regroupement VOD <span>›</span></a><a href="import_selective.php"><i class="fas fa-filter"></i> Imports sélectifs <span>›</span></a><a href="panel_diagnostics.php"><i class="fas fa-heartbeat"></i> Diagnostic catalogue V2 <span>›</span></a></div>
+        <div class="dashboard-kpis"><div><i class="fas fa-users"></i><span>Clients<b><?= $total_clients ?></b></span></div><div><i class="fas fa-server"></i><span>Sources configurées<b><?= $total_sources ?></b></span></div><div><i class="fas fa-shield-alt"></i><span>Catalogue<b class="catalogue-badge">Administré</b></span></div><div><i class="far fa-clock"></i><span>Dernière synchro<b class="sync-value">Non disponible</b></span></div></div>
+        <div class="row dashboard-grid">
+            <div class="col-xl-4 dashboard-access">
+                <div class="glass-panel access-card">
+                    <div class="card-heading"><i class="fas fa-user-plus"></i><div><h5>Créer un accès</h5><p>Nouveau client IPTV</p></div></div><div class="access-illustration" aria-hidden="true"><div class="tv-screen"><span>▶</span></div><div class="tv-stand"></div></div>
                     <form method="POST"><?= panel_csrf_field() ?>
                         <div class="mb-3">
                             <label class="form-label">Nom d'utilisateur</label>
-                            <input type="text" name="username" class="form-control" required>
+                            <input type="text" name="username" class="form-control" required placeholder="ex. client01" autocomplete="off">
                         </div>
                         <div class="mb-4">
                             <label class="form-label">Mot de passe</label>
-                            <input type="text" name="password" class="form-control" required>
+                            <input type="password" name="password" class="form-control" required autocomplete="new-password" placeholder="••••••••">
                         </div>
                         <button type="submit" name="add_client" class="btn btn-primary w-100"><i class="fas fa-plus me-2"></i>Créer l'accès</button>
                     </form>
                 </div>
 
-                <div class="glass-panel" id="sources">
+                <details class="glass-panel source-create" id="source-create"><summary>Ajouter une source</summary>
                     <h5 class="mb-4"><i class="fas fa-link text-primary me-2"></i> Ajouter une Source</h5>
                     <form method="POST"><?= panel_csrf_field() ?>
                         <div class="mb-3">
@@ -346,18 +335,18 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
 
                         <button type="submit" name="add_source" class="btn btn-primary w-100"><i class="fas fa-save me-2"></i>Enregistrer la source</button>
                     </form>
-                </div>
+                </details>
             </div>
 
-            <div class="col-xl-8">
+            <div class="col-xl-8 dashboard-tables">
                 <div class="glass-panel">
-                    <h5 class="mb-4">Liste des Clients</h5>
+                    <div class="card-heading" id="clients"><i class="fas fa-users"></i><div><h5>Clients</h5><p>Accès IPTV créés pour vos abonnés</p></div><button class="btn filter-toggle" type="button" onclick="document.getElementById('client-filter').hidden = !document.getElementById('client-filter').hidden"><i class="fas fa-filter"></i> Filtrer</button></div><div id="client-filter" hidden><input class="form-control" aria-label="Rechercher un client" placeholder="Rechercher un client" oninput="document.querySelectorAll('#clients-table tbody tr').forEach(row => row.hidden = !row.cells[0].textContent.toLowerCase().includes(this.value.toLowerCase()))"></div>
                     <div class="table-responsive">
-                        <table class="table table-borderless table-hover">
+                        <table id="clients-table" class="table table-borderless table-hover">
                             <thead>
                                 <tr>
                                     <th>Client</th>
-                                    <th>Password</th>
+                                    <th>Mot de passe</th>
                                     <th>Statut</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
@@ -370,7 +359,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                                     <td><span class="badge-active"><i class="fas fa-circle me-1" style="font-size:8px;"></i> Actif</span></td>
                                     <td class="text-end">
                                         <button class="btn btn-sm btn-info-custom me-1" onclick="showCredentials('<?= htmlspecialchars($c['username']) ?>', '<?= htmlspecialchars($c['password']) ?>')">
-                                            <i class="fas fa-link"></i> Lien
+                                            <i class="fas fa-link"></i> Lien client
                                         </button>
                                         <button class="btn btn-sm btn-outline-info me-1" onclick="editClientModal('<?= $c['id'] ?>', '<?= addslashes(htmlspecialchars($c['username'])) ?>', '<?= addslashes(htmlspecialchars($c['password'])) ?>')">
                                             <i class="fas fa-edit"></i>
@@ -390,7 +379,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                 </div>
 
                 <div class="glass-panel">
-                    <h5 class="mb-4">Sources (Fournisseurs)</h5>
+                    <div class="card-heading" id="sources"><i class="fas fa-server"></i><div><h5>Fournisseurs</h5><p>Sources d’import du catalogue</p></div><button type="button" class="btn filter-toggle" onclick="const panel=document.getElementById('source-create');panel.open=true;panel.scrollIntoView({behavior:'smooth'});panel.querySelector('input').focus()"><i class="fas fa-plus"></i> Ajouter une source</button></div>
                     <div class="table-responsive">
                         <table class="table table-borderless table-hover">
                             <thead>
