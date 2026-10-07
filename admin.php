@@ -227,9 +227,23 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         .copy-box { background: var(--bg-dark); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); font-family: monospace; font-size: 13px; margin-bottom: 15px; word-break: break-all; }
         .copy-box span { color: var(--accent); }
     </style>
-    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css">
+    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007">
 <?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript></head>
 <body class="dashboard-v2">
+<script>
+(function () {
+    try {
+        var theme = localStorage.getItem('gpanel.theme');
+        if (!theme) {
+            theme = 'light';
+            localStorage.setItem('gpanel.theme', theme);
+        }
+        document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+    } catch (error) {
+        document.documentElement.dataset.theme = 'light';
+    }
+}());
+</script>
 <form id="panelLogout" method="POST" hidden><?= panel_csrf_field() ?><input name="logout" value="1"></form>
     <aside class="sidebar">
         <div class="brand"><img class="brand-full" src="assets/g-panel-logo-dark.png" alt="G-PANEL"><img class="brand-mark" src="assets/g-panel-mark.png" alt="G-PANEL"></div><div class="gp-brand-mini">IPTV MANAGEMENT SYSTEM</div>
