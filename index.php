@@ -147,7 +147,7 @@ $heroMovies = array_slice($trendingMovies, 0, 10);
                 <span class="hero-badge" id="heroBadge">À LA UNE</span>
                 <h1 class="hero-title" id="heroTitle"><?php echo htmlspecialchars($first['title'] ?? $first['name'] ?? 'Films & Séries'); ?></h1>
                 <p class="hero-desc" id="heroDesc"><?php echo htmlspecialchars($first['overview'] ?? 'Catalogue indisponible pour le moment.'); ?></p>
-                <a href="/admin.php" class="btn-play">Accéder à l’administration</a>
+                <a href="https://gtv-3-cloudflare.lgtv80660.workers.dev/" class="btn-play">▶ Lancer sur G-TV app</a>
             </div>
         </div>
 
