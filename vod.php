@@ -13,9 +13,13 @@ $stream_id = trim((string)($_GET['stream'] ?? ''));
 $requested_extension = strtolower(trim((string)($_GET['extension'] ?? '')));
 $requested_extension = preg_replace('/[^a-z0-9]/i', '', $requested_extension);
 
-$stmt = $pdo->prepare('SELECT id FROM clients WHERE LOWER(username) = ? AND password = ? AND active = 1 LIMIT 1');
+$stmt = $pdo->prepare('SELECT * FROM clients WHERE LOWER(username) = ? AND password = ? AND active = 1 LIMIT 1');
 $stmt->execute([$user, $pass]);
-if (!$stmt->fetch()) { http_response_code(401); exit('Authentication failed'); }
+if (!($packClient=$stmt->fetch(PDO::FETCH_ASSOC))) { http_response_code(401); exit('Authentication failed'); }
+
+require_once __DIR__.'/panel_packs.php';
+$packAccess=packs_access($pdo,(int)$packClient['id']);
+if(!isset($packAccess[(int)$stream_id]) || $packAccess[(int)$stream_id]['stream_type']!=='movie') {http_response_code(403);exit('Content not authorized');}
 
 require_once __DIR__.'/panel_movie_groups.php';
 require_once __DIR__.'/panel_vod_relay.php';

@@ -15,12 +15,16 @@ $pass = trim((string)($_GET['password'] ?? ''));
 $stream_id = trim((string)($_GET['stream'] ?? ''));
 $requested_extension = strtolower(trim((string)($_GET['extension'] ?? '')));
 
-$stmt = $pdo->prepare('SELECT id FROM clients WHERE LOWER(username) = ? AND password = ? AND active = 1 LIMIT 1');
+$stmt = $pdo->prepare('SELECT * FROM clients WHERE LOWER(username) = ? AND password = ? AND active = 1 LIMIT 1');
 $stmt->execute([$user, $pass]);
-if (!$stmt->fetch()) {
+if (!($packClient=$stmt->fetch(PDO::FETCH_ASSOC))) {
     http_response_code(401);
     exit('Authentication failed');
 }
+
+require_once __DIR__.'/panel_packs.php';
+$packAccess=packs_access($pdo,(int)$packClient['id']);
+if(!isset($packAccess[(int)$stream_id]) || $packAccess[(int)$stream_id]['stream_type']!=='episode') {http_response_code(403);exit('Content not authorized');}
 
 $stmt = $pdo->prepare("SELECT s.*, COALESCE(f.type,'m3u') AS type, f.url_base, f.user, f.pass
                        FROM streams s

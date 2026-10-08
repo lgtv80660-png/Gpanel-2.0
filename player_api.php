@@ -12,12 +12,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require 'config.php';
+require_once __DIR__.'/panel_packs.php';
 require_once __DIR__.'/panel_movie_groups.php';
 require_once __DIR__.'/panel_series_cache.php';
 require_once __DIR__.'/panel_import.php';
 // Schema changes are explicit CLI operations; playback never migrates the database.
 
 header('Content-Type: application/json; charset=utf-8');
+header('Cache-Control: private, no-store');
+header('X-Content-Type-Options: nosniff');
 
 $user = isset($_REQUEST['username']) ? trim(strtolower($_REQUEST['username'])) : '';
 $pass = isset($_REQUEST['password']) ? trim($_REQUEST['password']) : '';
@@ -40,6 +43,10 @@ if (!$client) {
     exit; 
 }
 
+$packContext=packs_context($pdo,(int)$client['id']);
+$packAccess=packs_catalog($pdo,$packContext);
+function packs_filter_streams(array $rows): array {global $packAccess;return array_values(array_filter($rows,fn($s)=>isset($packAccess[(int)$s['stream_id']])));}
+function packs_filter_categories(array $rows,string $type): array {global $packAccess;$cats=[];foreach($packAccess as $s) if($s['stream_type']===$type) $cats[(int)$s['category_id']]=true;return array_values(array_filter($rows,fn($c)=>isset($cats[(int)$c['category_id']])));}
 function fetch_data_proxy($url) {
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url);
@@ -76,7 +83,7 @@ if ($action === 'get_live_categories') {
             'category_name' => $c['category_name'], 
             'parent_id' => (int)$c['parent_id']
         ]; 
-    }, $categories);
+    }, packs_filter_categories($categories,'live'));
     echo json_encode($result);
 } 
 elseif ($action === 'get_live_streams') {
@@ -103,7 +110,7 @@ elseif ($action === 'get_live_streams') {
             'direct_source' => $base_proxy_url . '/live.php?username=' . urlencode($user) . '&password=' . urlencode($pass) . '&stream=' . $s['stream_id'] . '&extension=ts', 
             'tv_archive_duration' => 0
         ];
-    }, $streams);
+    }, packs_filter_streams($streams));
     echo json_encode($result);
 } 
 
@@ -119,7 +126,7 @@ elseif ($action === 'get_vod_categories') {
             'category_name' => $c['category_name'], 
             'parent_id' => (int)$c['parent_id']
         ]; 
-    }, $categories);
+    }, packs_filter_categories($categories,'movie'));
     echo json_encode($result);
 }
 elseif ($action === 'get_vod_streams') {
@@ -132,7 +139,7 @@ elseif ($action === 'get_vod_streams') {
     }
 
     $result = [];
-    foreach ($streams as $i => $s) {
+    foreach (packs_filter_streams($streams) as $i => $s) {
         if (!movie_catalog_visible($pdo,$s['stream_id'])) continue;
         $ext = strtolower(trim((string)($s['container_extension'] ?? '')));
         $ext = preg_replace('/[^a-z0-9]/i', '', $ext);
@@ -169,12 +176,14 @@ elseif ($action === 'get_vod_streams') {
 }
 elseif ($action === 'get_vod_info') {
     $localVodId = trim((string)($_REQUEST['vod_id'] ?? $_REQUEST['stream_id'] ?? ''));
+    if (!isset($packAccess[(int)$localVodId])) {echo json_encode(['info'=>[], 'movie_data'=>[]]);exit;}
     if ($localVodId === '') { echo json_encode(['info'=>[], 'movie_data'=>[]]); exit; }
 
     $stmt = $pdo->prepare("SELECT s.*, f.url_base, f.user, f.pass, f.type FROM streams s LEFT JOIN fournisseurs f ON s.fournisseur_id=f.id INNER JOIN categories c ON s.category_id=c.category_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND (f.active=1 OR s.fournisseur_id=0) LIMIT 1");
     $stmt->execute([$localVodId]);
     $movie = $stmt->fetch(PDO::FETCH_ASSOC);
     $movie = movie_resolve($pdo,$localVodId);
+    if ($movie && !isset($packAccess[(int)$movie['stream_id']])) $movie=false;
     if ($movie) $localVodId=(string)$movie['stream_id'];
     if (!$movie) { echo json_encode(['info'=>[], 'movie_data'=>[]]); exit; }
 
@@ -254,7 +263,7 @@ elseif ($action === 'get_series_categories') {
             'category_name' => $c['category_name'], 
             'parent_id' => (int)$c['parent_id']
         ]; 
-    }, $categories);
+    }, packs_filter_categories($categories,'series'));
     echo json_encode($result);
 }
 elseif ($action === 'get_series') {
@@ -288,12 +297,13 @@ elseif ($action === 'get_series') {
             'category_id' => (string)($s['category_id'] ?? 1),
             'added' => (string)($s['vod_added'] ?? '')
         ];
-    }, $streams);
+    }, packs_filter_streams($streams));
     echo json_encode($result);
 }
 elseif ($action === 'get_series_info') {
     $local_series_id = trim((string)($_REQUEST['series_id'] ?? ''));
 
+    if (!isset($packAccess[(int)$local_series_id])) {echo json_encode(['episodes'=>[], 'seasons'=>[], 'info'=>[]]);exit;}
     if ($local_series_id === '') {
         echo json_encode(['episodes' => [], 'seasons' => [], 'info' => []]);
         exit;
@@ -313,6 +323,7 @@ elseif ($action === 'get_series_info') {
         $q=$pdo->prepare("SELECT e.*,x.season_number,x.episode_number FROM content_settings x JOIN streams e ON e.stream_id=x.stream_id JOIN categories c ON c.category_id=e.category_id WHERE x.series_parent=? AND e.fournisseur_id=0 AND e.stream_type='episode' AND e.visible=1 AND c.visible=1 ORDER BY x.season_number,x.episode_number,e.stream_id");
         $q->execute([$local_series_id]);$episodes=[];$seasons=[];
         foreach($q as $ep) {
+            if(!isset($packAccess[(int)$ep['stream_id']])) continue;
             $season=(int)$ep['season_number'];$ext=$ep['container_extension']?:'mp4';
             $episodes[$season][]=['id'=>(string)$ep['stream_id'],'episode_num'=>(int)$ep['episode_number'],'title'=>$ep['stream_name'],'container_extension'=>$ext,'season'=>$season,'info'=>['movie_image'=>$ep['stream_icon'],'plot'=>$ep['vod_plot'],'duration'=>$ep['vod_runtime']],'direct_source'=>$base_proxy_url.'/series/'.rawurlencode($user).'/'.rawurlencode($pass).'/'.$ep['stream_id'].'.'.$ext];
             $seasons[$season]=['season_number'=>$season,'name'=>'Saison '.$season];
@@ -365,7 +376,7 @@ elseif ($action === 'get_series_info') {
     $existingEpisodes = [];
     foreach (array_chunk(array_unique($remoteIds), 400) as $chunk) {
         $marks = implode(',', array_fill(0, count($chunk), '?'));
-        $stmt_check = $pdo->prepare("SELECT stream_id, direct_source, stream_name, stream_icon, container_extension, visible FROM streams WHERE fournisseur_id = ? AND stream_type = 'episode' AND direct_source IN ($marks) ORDER BY stream_id");
+        $stmt_check = $pdo->prepare("SELECT e.stream_id, e.direct_source, e.stream_name, e.stream_icon, e.container_extension, e.visible, c.visible AS category_visible FROM streams e LEFT JOIN categories c ON c.category_id=e.category_id WHERE e.fournisseur_id = ? AND e.stream_type = 'episode' AND e.direct_source IN ($marks) ORDER BY e.stream_id");
         $stmt_check->execute(array_merge([$series['fournisseur_id']], $chunk));
         foreach ($stmt_check as $row) if (!isset($existingEpisodes[(string)$row['direct_source']])) $existingEpisodes[(string)$row['direct_source']] = $row;
     }
@@ -394,7 +405,7 @@ elseif ($action === 'get_series_info') {
                 if (!empty($existing['container_extension'])) {
                     $ep_ext = strtolower($existing['container_extension']);
                 }
-                if ((int)$existing['visible'] !== 1) { unset($episodes_list[$ep_index]); continue; }
+                if ((int)$existing['visible'] !== 1 || (int)$existing['category_visible'] !== 1) { unset($episodes_list[$ep_index]); continue; }
                 $ep['title'] = $existing['stream_name'];
                 if (!isset($ep['info']) || !is_array($ep['info'])) $ep['info'] = [];
                 $ep['info']['movie_image'] = $existing['stream_icon'];
@@ -404,7 +415,7 @@ elseif ($action === 'get_series_info') {
                     $remote_ep_id, $ep_ext, 1, $remote_ep_id
                 ]);
                 $local_ep_id = (int)$pdo->lastInsertId();
-                $existingEpisodes[$remote_ep_id] = ['stream_id'=>$local_ep_id, 'stream_name'=>$ep_title, 'stream_icon'=>$ep_icon, 'container_extension'=>$ep_ext, 'visible'=>1];
+                $existingEpisodes[$remote_ep_id] = ['stream_id'=>$local_ep_id, 'stream_name'=>$ep_title, 'stream_icon'=>$ep_icon, 'container_extension'=>$ep_ext, 'visible'=>1, 'category_visible'=>1];
             }
 
             content_setting($pdo,$local_ep_id,'series_parent',(int)$local_series_id);
@@ -445,15 +456,16 @@ else {
             'username' => (string)$client['username'], 
             'password' => (string)$client['password'], 
             'message' => 'Welcome',
-            'auth' => 1, 
-            'status' => 'Active', 
-            'exp_date' => '1798761600',
+            'auth' => $packContext['allowed'] && $packAccess ? 1 : 0,
+            'status' => $packContext['allowed'] && $packAccess ? 'Active' : ($packContext['reason']==='expired'?'Expired':'Disabled'),
+            'exp_date' => $packContext['expires_at'] ? (string)strtotime($packContext['expires_at']) : null,
             'is_trial' => '0',
             'active_cons' => '0',
             'created_at' => '1600000000',
             'max_connections' => '1', 
             'allowed_output_formats' => ['m3u8', 'ts', 'mp4', 'mkv']
         ], 
+        'pack_entitlements' => $packContext + ['catalogue_ids'=>array_map('intval',array_keys($packAccess))],
         'server_info' => [
             'url' => $host, 
             'port' => '80', 

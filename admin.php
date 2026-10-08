@@ -2,6 +2,8 @@
 require_once __DIR__ . '/panel_security.php';
 panel_check_csrf();
 require 'config.php';
+require_once __DIR__.'/panel_packs.php';
+require_once __DIR__.'/panel_revalidation.php';
 
 
 if (isset($_POST['logout'])) {
@@ -100,25 +102,30 @@ if (isset($_GET['success'])) {
     if ($_GET['success'] == 'deleted') $message = '<div class="alert alert-warning"><i class="fas fa-trash"></i> Élément supprimé !</div>';
 }
 
-if (isset($_POST['add_client'])) {
-    $stmt = $pdo->prepare("INSERT INTO clients (username, password) VALUES (?, ?)");
-    if($stmt->execute([$_POST['username'], $_POST['password']])) {
-        header("Location: admin.php?success=1"); exit;
-    }
-}
 
-if (isset($_POST['edit_client_btn'])) {
-    $stmt = $pdo->prepare("UPDATE clients SET username = ?, password = ? WHERE id = ?");
-    if($stmt->execute([$_POST['edit_client_username'], $_POST['edit_client_password'], $_POST['client_id']])) {
-        header("Location: admin.php?success=updated"); exit;
-    }
-}
+if(($_GET['pack_cache']??'')==='pending') $message.='<div class="alert alert-warning">'.htmlspecialchars(panel_t('revalidation_failed'),ENT_QUOTES,'UTF-8').'</div>';
 
-if (isset($_POST['delete_client'])) {
-    $stmt = $pdo->prepare("DELETE FROM clients WHERE id = ?");
-    if($stmt->execute([$_POST['client_id']])) {
-        header("Location: admin.php?success=deleted"); exit;
-    }
+if(isset($_POST['add_client']) || isset($_POST['edit_client_btn']) || isset($_POST['delete_client'])) {
+    try {
+        if(!packs_ready($pdo)) throw new InvalidArgumentException('Migration Packs requise.');
+        $pdo->beginTransaction();$id=0;
+        if(!isset($_POST['add_client'])) {
+            $id=filter_var($_POST['client_id']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+            if(!$id) throw new InvalidArgumentException('Client invalide.');
+            $q=$pdo->prepare('SELECT id FROM clients WHERE id=? FOR UPDATE');$q->execute([$id]);if(!$q->fetchColumn()) throw new InvalidArgumentException('Client introuvable.');
+        }
+        if(isset($_POST['delete_client'])) {
+            $pdo->prepare('DELETE FROM client_packs WHERE client_id=?')->execute([$id]);
+            $pdo->prepare('DELETE FROM clients WHERE id=?')->execute([$id]);$success='deleted';
+        } else {
+            $isNew=isset($_POST['add_client']);$username=trim((string)($_POST[$isNew?'username':'edit_client_username']??''));$password=(string)($_POST[$isNew?'password':'edit_client_password']??'');
+            if($username==='' || $password==='' || mb_strlen($username)>50 || mb_strlen($password)>50) throw new InvalidArgumentException('Identifiants invalides (50 caractères maximum).');
+            if($isNew) {$pdo->prepare('INSERT INTO clients (username,password) VALUES (?,?)')->execute([$username,$password]);$id=(int)$pdo->lastInsertId();$success='1';}
+            else {$pdo->prepare('UPDATE clients SET username=?,password=? WHERE id=?')->execute([$username,$password,$id]);$success='updated';}
+            packs_assign($pdo,$id,$_POST);
+        }
+        $pdo->commit();$cacheNotified=panel_revalidate();header('Location: admin.php?success='.$success.'&pack_cache='.($cacheNotified?'ok':'pending'));exit;
+    } catch(Throwable $e) {if($pdo->inTransaction()) $pdo->rollBack();$message='<div class="alert alert-danger">'.htmlspecialchars($e instanceof InvalidArgumentException?$e->getMessage():'Enregistrement client indisponible.',ENT_QUOTES,'UTF-8').'</div>';if(!($e instanceof InvalidArgumentException)) error_log('Client pack: '.$e->getMessage());}
 }
 
 if (isset($_POST['add_source'])) {
@@ -180,7 +187,9 @@ if (isset($_POST['delete_source'])) {
 $total_clients = $pdo->query("SELECT COUNT(*) FROM clients")->fetchColumn();
 $total_sources = $pdo->query("SELECT COUNT(*) FROM fournisseurs")->fetchColumn();
 
-$clients = $pdo->query("SELECT * FROM clients ORDER BY id DESC")->fetchAll();
+$pack_options=packs_ready($pdo)?$pdo->query('SELECT * FROM packs ORDER BY name')->fetchAll():[];
+$total_packs=count($pack_options);
+$clients = $pdo->query(packs_ready($pdo)?"SELECT c.*,cp.pack_id,cp.expires_at,p.name AS pack_name,p.level AS pack_level,p.active AS pack_active FROM clients c LEFT JOIN client_packs cp ON cp.client_id=c.id LEFT JOIN packs p ON p.id=cp.pack_id ORDER BY c.id DESC":"SELECT * FROM clients ORDER BY id DESC")->fetchAll();
 $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetchAll();
 ?>
 <!DOCTYPE html>
@@ -227,7 +236,8 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         .copy-box { background: var(--bg-dark); padding: 15px; border-radius: 8px; border: 1px solid var(--border-color); font-family: monospace; font-size: 13px; margin-bottom: 15px; word-break: break-all; }
         .copy-box span { color: var(--accent); }
     </style>
-    <link rel="stylesheet" href="assets/gpanel.css"><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007-4">
+    <link rel="stylesheet" href="assets/gpanel.css">
+    <link rel="stylesheet" href="assets/packs.css"><script src="assets/packs-translations.js" defer></script><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007-4">
 <?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript></head>
 <body class="dashboard-v2">
 <script>
@@ -276,7 +286,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
             <div class="hero-metrics">
                 <div><i class="fas fa-users"></i><span>Clients<b><?= $total_clients ?></b></span></div>
                 <div><i class="fas fa-database"></i><span>Fournisseurs (Sources)<b><?= $total_sources ?></b></span></div>
-                <a href="packs.php" class="packs-kpi"><i class="fas fa-cube"></i><span>Packs<b aria-label="Compteur disponible avec le futur module Packs">—</b></span><i class="fas fa-chevron-right kpi-arrow"></i></a>
+                <a href="packs.php" class="packs-kpi"><i class="fas fa-cube"></i><span>Packs<b><?= $total_packs ?></b></span><i class="fas fa-chevron-right kpi-arrow"></i></a>
                 <div><i class="fas fa-shield-alt"></i><span>Catalogue<b><?= $dashboard_catalogue ?></b></span></div>
             </div>
         </section>
@@ -311,14 +321,14 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                             <tbody>
                                 <?php foreach ($clients as $c): ?>
                                 <tr>
-                                    <td class="fw-bold" data-gp-skip><i class="fas fa-user-circle me-2 text-muted"></i><?= htmlspecialchars($c['username']) ?></td>
+                                    <td class="fw-bold" data-gp-skip><i class="fas fa-user-circle me-2 text-muted"></i><?= htmlspecialchars($c['username']) ?><br><?= packs_badge($c['pack_name'] ?? 'Aucun pack', $c['pack_level'] ?? '') ?></td>
                                     <td><span aria-label="Mot de passe masqué">••••••••</span></td>
-                                    <td><span class="badge-active"><i class="fas fa-circle me-1" style="font-size:8px;"></i> Actif</span></td>
+                                    <td><span class="badge-active"><?= !(int)$c['active'] ? 'Inactif' : (empty($c['pack_id']) ? 'Sans pack' : (!(int)$c['pack_active'] ? 'Pack inactif' : (!empty($c['expires_at']) && strtotime($c['expires_at'].' UTC') <= time() ? 'Expiré' : 'Actif'))) ?></span><?php if(!empty($c['expires_at'])):?><small class="d-block text-muted"><?=htmlspecialchars($c['expires_at'],ENT_QUOTES,'UTF-8')?> UTC</small><?php endif?></td>
                                     <td class="text-end">
-                                        <button class="btn btn-sm btn-info-custom me-1" onclick="showCredentials('<?= htmlspecialchars($c['username']) ?>', '<?= htmlspecialchars($c['password']) ?>')">
+                                        <button class="btn btn-sm btn-info-custom me-1" onclick="showCredentials(...<?= htmlspecialchars(json_encode([$c['username'],$c['password']],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT),ENT_QUOTES,'UTF-8') ?>)">
                                             <i class="fas fa-link"></i> Lien client
                                         </button>
-                                        <button class="btn btn-sm btn-outline-info me-1" onclick="editClientModal('<?= $c['id'] ?>', '<?= addslashes(htmlspecialchars($c['username'])) ?>', '<?= addslashes(htmlspecialchars($c['password'])) ?>')">
+                                        <button class="btn btn-sm btn-outline-info me-1" onclick="editClientModal(...<?= htmlspecialchars(json_encode([$c['id'],$c['username'],$c['password'],$c['pack_id']??0,$c['expires_at']??null],JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT),ENT_QUOTES,'UTF-8') ?>)">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <form method="POST" style="display:inline;" onsubmit="return confirm(GPanelUI.t('Supprimer ce client ?'));"><?= panel_csrf_field() ?>
@@ -395,6 +405,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                             <label class="form-label">Mot de passe</label>
                             <input type="password" name="password" class="form-control" required autocomplete="new-password" placeholder="••••••••">
                         </div>
+                        <?php packs_client_fields($pack_options); ?>
                         <button type="submit" name="add_client" class="btn btn-primary w-100"><i class="fas fa-plus me-2"></i>Créer l'accès</button>
                     </form></div></div></div></div><div class="modal fade" id="createSourceModal" tabindex="-1" aria-labelledby="createSourceTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 id="createSourceTitle">Ajouter une source</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fermer"></button></div><div class="modal-body"><form method="POST"><?= panel_csrf_field() ?>
                         <div class="mb-3">
@@ -467,6 +478,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
           <form method="POST"><?= panel_csrf_field() ?>
               <div class="modal-body">
                 <input type="hidden" name="client_id" id="edit_client_id">
+                <?php packs_client_fields($pack_options,'edit_'); ?>
                 <div class="mb-3">
                     <label class="form-label">Nom d'utilisateur</label>
                     <input type="text" name="edit_client_username" id="edit_client_username" class="form-control" required>
@@ -571,7 +583,10 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         }
         window.showCredentials = showCredentials;
 
-        function editClientModal(id, username, password) {
+        function editClientModal(id, username, password, packId, expiresAt) {
+            document.getElementById('edit_pack_id').value = packId || '0';
+            document.getElementById('edit_pack_expires_at').value = expiresAt ? expiresAt.replace(' ', 'T').slice(0,16) : '';
+            document.getElementById('edit_pack_expiry_mode').value = packId && !expiresAt ? 'unlimited' : 'default';
             document.getElementById('edit_client_id').value = id;
             document.getElementById('edit_client_username').value = username;
             document.getElementById('edit_client_password').value = password;

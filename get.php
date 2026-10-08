@@ -21,7 +21,7 @@ if ($user === '' || $pass === '') {
 }
 
 $stmt = $pdo->prepare(
-    'SELECT id FROM clients
+    'SELECT * FROM clients
      WHERE LOWER(username) = ?
        AND password = ?
        AND active = 1
@@ -29,11 +29,13 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute([$user, $pass]);
 
-if (!$stmt->fetch()) {
+if (!($packClient=$stmt->fetch(PDO::FETCH_ASSOC))) {
     http_response_code(401);
     exit('Authentication failed.');
 }
 
+require_once __DIR__.'/panel_packs.php';
+$packAccess=packs_access($pdo,(int)$packClient['id']);
 // Adresse locale du panel
 $https = !empty($_SERVER['HTTPS'])
     && $_SERVER['HTTPS'] !== 'off';
@@ -101,6 +103,7 @@ echo "#EXTM3U\n";
 
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     $id = (int)$row['stream_id'];
+    if(!isset($packAccess[$id])) continue;
     if ($row['stream_type']==='movie' && !movie_catalog_visible($pdo,$id)) continue;
 
     $name = trim((string)$row['stream_name']);

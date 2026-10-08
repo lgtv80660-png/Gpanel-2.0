@@ -9,7 +9,7 @@ RUN apt-get update \
 
 WORKDIR /var/www/html
 COPY *.php .htaccess ./
-COPY movie_groups.sql content_v2.sql /var/www/html/
+COPY movie_groups.sql content_v2.sql packs.sql /var/www/html/
 COPY assets/ ./assets/
 COPY mysql.sql /opt/gpanel/mysql.sql
 COPY deploy/ /opt/gpanel/deploy/

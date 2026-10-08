@@ -14,9 +14,13 @@ $stream_id = trim((string)($_GET['stream'] ?? ''));
 $extension = strtolower(trim((string)($_GET['extension'] ?? 'ts')));
 $extension = preg_replace('/[^a-z0-9]/i', '', $extension) ?: 'ts';
 
-$stmt = $pdo->prepare('SELECT id FROM clients WHERE LOWER(username) = ? AND password = ? AND active = 1 LIMIT 1');
+$stmt = $pdo->prepare('SELECT * FROM clients WHERE LOWER(username) = ? AND password = ? AND active = 1 LIMIT 1');
 $stmt->execute([$user, $pass]);
-if (!$stmt->fetch()) { http_response_code(401); exit('Authentication failed'); }
+if (!($packClient=$stmt->fetch(PDO::FETCH_ASSOC))) { http_response_code(401); exit('Authentication failed'); }
+
+require_once __DIR__.'/panel_packs.php';
+$packAccess=packs_access($pdo,(int)$packClient['id']);
+if(!isset($packAccess[(int)$stream_id]) || $packAccess[(int)$stream_id]['stream_type']!=='live') {http_response_code(403);exit('Content not authorized');}
 
 $stmt = $pdo->prepare("SELECT s.*, COALESCE(f.type,'m3u') AS type, f.url_base, f.user, f.pass, f.mac_address
                        FROM streams s LEFT JOIN fournisseurs f ON s.fournisseur_id = f.id

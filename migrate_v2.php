@@ -13,6 +13,9 @@ try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS import_exclusions (fournisseur_id INT NOT NULL, content_type VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, remote_stream_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, PRIMARY KEY (fournisseur_id,content_type,remote_stream_id)) ENGINE=InnoDB");
     foreach (explode(';', file_get_contents(__DIR__.'/content_v2.sql')) as $ddl) { if (trim($ddl) !== '') $pdo->exec($ddl); }
     foreach (explode(';', file_get_contents(__DIR__.'/movie_groups.sql')) as $ddl) { if (trim($ddl) !== '') $pdo->exec($ddl); }
+    $clientEngine=$pdo->query("SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='clients'")->fetchColumn();
+    if(strcasecmp((string)$clientEngine,'InnoDB')!==0) throw new RuntimeException('Transactional clients table required for Packs');
+    foreach (explode(';', file_get_contents(__DIR__.'/packs.sql')) as $ddl) { if (trim($ddl) !== '') $pdo->exec($ddl); }
     foreach (['streams','categories'] as $table) {
         $before = (int)$pdo->query('SELECT COUNT(*) FROM '.$table)->fetchColumn();
         $stmt = $pdo->prepare('SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?');
