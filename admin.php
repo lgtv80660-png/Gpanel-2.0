@@ -268,8 +268,8 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                     </div>
                 </details>
             </div>
-            <div class="hero-copy"><span class="hero-status"><span></span> Administration en ligne</span>
-            <p class="hero-breadcrumb">G-PANEL V2 / ADMINISTRATION</p><h2>Bonjour, <em>Admin</em></h2>
+            <div class="hero-copy">
+            <h2>Bonjour, <em>Admin</em></h2>
             <p class="hero-description">Pilotez vos clients, vos sources et votre catalogue IPTV depuis une seule interface.</p>
             <div class="hero-actions"><button type="button" class="btn hero-primary" onclick="purgeNextJsCache()"><i class="fas fa-bolt"></i> Synchro app G-TV</button><a href="importer.php" class="btn hero-secondary"><i class="fas fa-sync-alt"></i> Forcer l'importation</a></div></div>
             </div>
