@@ -1,0 +1,27 @@
+<?php
+require_once __DIR__.'/panel_operations.php';$pdo=ops_page('Monitoring Live');require_once __DIR__.'/panel_live_checks.php';
+$method=$_SERVER['REQUEST_METHOD']??'GET';if(!in_array($method,['GET','POST'],true)) panel_fail(405,'method_not_allowed');
+[$where,$params]=ops_live_filters();$notice='';
+if($method==='POST') {
+    panel_require_admin('monitor:check');panel_check_csrf();
+    if(($_POST['action']??'')==='single') {
+        $id=filter_var($_POST['stream_id']??'',FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);if(!$id) panel_fail(422,'invalid_request');
+        $done=ops_check_live($pdo,$id)?1:0;ops_audit($pdo,'monitor.check',$id);
+    } elseif(($_POST['action']??'')==='batch') {
+        $q=$pdo->prepare("SELECT s.stream_id FROM streams s LEFT JOIN panel_live_state m ON m.stream_id=s.stream_id WHERE $where AND (m.checked_at IS NULL OR m.checked_at<DATE_SUB(UTC_TIMESTAMP(),INTERVAL ? SECOND)) AND (m.lease_until IS NULL OR m.lease_until<UTC_TIMESTAMP()) ORDER BY m.checked_at,s.stream_id LIMIT 3");$q->execute(array_merge($params,[(int)ops_setting($pdo,'monitor_ttl_seconds','300')]));$ids=$q->fetchAll(PDO::FETCH_COLUMN);$done=0;
+        foreach($ids as $id) $done+=ops_check_live($pdo,(int)$id)?1:0;ops_audit($pdo,'monitor.batch');
+    } else panel_fail(422,'invalid_request');
+    $notice=$done.' contrôle(s) effectué(s). Les résultats récents ou déjà en contrôle sont conservés (TTL).';
+}
+$page=max(1,min(100000,(int)($_GET['page']??1)));$offset=($page-1)*50;
+$q=$pdo->prepare("SELECT s.stream_id,s.stream_name,c.category_name,s.fournisseur_id,f.nom AS provider_name,m.state,m.response_ms,m.checked_at,m.error_code,m.http_status FROM streams s LEFT JOIN categories c ON c.category_id=s.category_id LEFT JOIN fournisseurs f ON f.id=s.fournisseur_id LEFT JOIN panel_live_state m ON m.stream_id=s.stream_id WHERE $where ORDER BY s.stream_name,s.stream_id LIMIT 51 OFFSET $offset");$q->execute($params);$rows=$q->fetchAll();$more=count($rows)>50;$rows=array_slice($rows,0,50);
+$providers=$pdo->query('SELECT id,nom FROM fournisseurs ORDER BY id')->fetchAll();
+$categories=$pdo->query("SELECT DISTINCT c.category_id,c.category_name FROM categories c JOIN streams s ON s.category_id=c.category_id WHERE s.stream_type='live' ORDER BY c.category_name LIMIT 2000")->fetchAll();
+v2_begin('Monitoring Live');echo ops_links(); ?>
+<p class="v2-notice">État HTTP indicatif, sans validation du décodage vidéo. Aucun appel fournisseur au chargement. TTL : <?=(int)ops_setting($pdo,'monitor_ttl_seconds','300')?> s · lot manuel : 3 chaînes maximum · 5 s de transfert maximum par chaîne. Les anciens résultats sont datés ; UNKNOWN indique une chaîne jamais contrôlée.</p>
+<?php if($notice):?><p class="v2-notice"><?=v2_h($notice)?></p><?php endif?>
+<form method="get" class="v2-form"><label>Recherche<input name="search" maxlength="120" value="<?=v2_h($_GET['search']??'')?>"></label><label>Fournisseur<select name="provider"><option value="">Tous</option><option value="0" <?=($_GET['provider']??'')==='0'?'selected':''?>>Personnel</option><?php foreach($providers as $provider):$id=$provider['id'];?><option value="<?=(int)$id?>" <?=(string)($id)===(string)($_GET['provider']??'')?'selected':''?>><?=v2_h($provider['nom']??('Fournisseur #'.$id))?></option><?php endforeach?></select></label><label>Catégorie<select name="category"><option value="">Toutes</option><?php foreach($categories as $c):?><option value="<?=(int)$c['category_id']?>" <?=(string)$c['category_id']===(string)($_GET['category']??'')?'selected':''?>><?=v2_h($c['category_name'])?></option><?php endforeach?></select></label><label>État<select name="state"><option value="">Tous</option><?php foreach(['ONLINE','OFFLINE','DEGRADED','UNKNOWN'] as $s):?><option <?=($_GET['state']??'')===$s?'selected':''?>><?=$s?></option><?php endforeach?></select></label><button>Filtrer</button></form>
+<form method="post" class="v2-form"><?=panel_csrf_field()?><input type="hidden" name="action" value="batch"><button>Contrôler un lot filtré</button></form>
+<section class="glass-panel"><div class="v2-table"><table><tr><th>Chaîne</th><th>Source / catégorie</th><th>État / réponse</th><th>Dernier contrôle UTC</th><th>Erreur</th><th>Action</th></tr><?php foreach($rows as $r):?><tr><td><?=v2_h($r['stream_name'])?></td><td><?=v2_h((int)$r['fournisseur_id']===0?'Personnel':($r['provider_name']??('Fournisseur #'.$r['fournisseur_id'])))?><small><?=v2_h($r['category_name'])?></small></td><td><span class="v2-badge"><?=v2_h($r['state']??'UNKNOWN')?></span><small><?=$r['response_ms']===null?'—':(int)$r['response_ms'].' ms'?></small></td><td><?=v2_h($r['checked_at']??'Jamais')?><?php if($r['checked_at']&&strtotime($r['checked_at'].' UTC')<time()-(int)ops_setting($pdo,'monitor_ttl_seconds','300')):?><small>Résultat à actualiser</small><?php endif?></td><td><?=v2_h($r['error_code']??'—')?></td><td><form method="post"><?=panel_csrf_field()?><input type="hidden" name="action" value="single"><input type="hidden" name="stream_id" value="<?=(int)$r['stream_id']?>"><button>Relancer</button></form><a href="content_edit.php?id=<?=(int)$r['stream_id']?>">Contenu</a></td></tr><?php endforeach?></table></div><?php if(!$rows):?><p class="v2-muted">Aucune chaîne pour ces filtres.</p><?php endif?></section>
+<nav class="v2-form"><?php foreach([$page>1?$page-1:0,$more?$page+1:0] as $i):if(!$i)continue;$query=$_GET;$query['page']=$i;?><a href="?<?=v2_h(http_build_query($query))?>">Page <?=$i?></a><?php endforeach?></nav>
+<?php v2_end();

@@ -2,6 +2,8 @@
 // Configuration locale WAMP uniquement.
 // Ne pas utiliser ce fichier en production.
 
+if(isset($pdo) && $pdo instanceof PDO) return;
+if(!function_exists('panel_db_env')) {
 function panel_db_env($name, $default = null) {
     $value = $_ENV[$name]
         ?? $_SERVER[$name]
@@ -12,6 +14,8 @@ function panel_db_env($name, $default = null) {
     }
 
     return (string)$value;
+}
+
 }
 
 try {

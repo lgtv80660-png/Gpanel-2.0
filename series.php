@@ -66,6 +66,8 @@ if (!$url_finale) {
 
 // Do NOT proxy the media through PHP. Xtream clients need the provider's
 // native response headers, redirects and Range/206 handling.
+require_once __DIR__.'/panel_operations.php';
+ops_playback_hook($pdo,(int)$packClient['id'],(int)$stream_id,'episode');
 header('Location: ' . $url_finale, true, 302);
 exit;
 ?>

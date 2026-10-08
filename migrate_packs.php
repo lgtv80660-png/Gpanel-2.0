@@ -10,5 +10,6 @@ foreach(['clients','streams','categories','content_settings','movie_group_source
 if((int)$pdo->query("SELECT GET_LOCK('gpanel-v2-migrate',30)")->fetchColumn()!==1) throw new RuntimeException('Migration busy');
 try {
     foreach(explode(';',file_get_contents(__DIR__.'/packs.sql')) as $sql) if(trim($sql)!=='') $pdo->exec($sql);
+    foreach(explode(';',file_get_contents(__DIR__.'/operations.sql')) as $sql) if(trim($sql)!=='') $pdo->exec($sql);
     echo "Packs schema ready. Existing data untouched.\n";
 } finally {$pdo->query("SELECT RELEASE_LOCK('gpanel-v2-migrate')");}

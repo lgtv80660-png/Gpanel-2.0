@@ -60,6 +60,8 @@ if (empty($url_finale) || !preg_match('#^https?://#i', $url_finale)) {
     http_response_code(502); exit('Invalid stream URL');
 }
 
+require_once __DIR__.'/panel_operations.php';
+ops_playback_hook($pdo,(int)$packClient['id'],(int)$stream_id,'live');
 header('Location: ' . $url_finale, true, 302);
 exit;
 ?>

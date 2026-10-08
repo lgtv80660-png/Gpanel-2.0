@@ -48,6 +48,7 @@ if($_SERVER['REQUEST_METHOD']==='POST') {
             $q=$pdo->prepare('SELECT COUNT(*) FROM client_packs WHERE pack_id=?');$q->execute([$id]);if($q->fetchColumn()) throw new InvalidArgumentException('Retirez ou changez le pack des clients affectés avant suppression.');
             $pdo->prepare('DELETE FROM packs WHERE id=?')->execute([$id]);
         } else throw new InvalidArgumentException('Action invalide.');
+        ops_audit($pdo,'pack.'.$op,isset($copy)?$copy:$id);
         $pdo->commit();$notified=panel_revalidate();header('Location: packs.php?saved=1&cache='.($notified?'ok':'pending'));exit;
     } catch(Throwable $e) {if($pdo->inTransaction()) $pdo->rollBack();$error=$e instanceof InvalidArgumentException?$e->getMessage():'Enregistrement indisponible.';if(!($e instanceof InvalidArgumentException)) error_log('Packs: '.$e->getMessage());$editing=(int)($_POST['id']??0);}
 }

@@ -24,7 +24,12 @@ function panel_fail($status, $code) {
 }
 function panel_require_admin($permission) {
     if (($_SESSION['admin_logged'] ?? false) !== true || empty($_SESSION['panel_admin_id'])) panel_fail(401, 'auth_required');
-    // Existing admins retain their privileges. An explicit map can restrict each account.
+    require_once __DIR__.'/panel_operations.php';
+    global $pdo;
+    if(!isset($pdo)) require __DIR__.'/config.php';
+    try {if(!ops_authorize($pdo,(int)$_SESSION['panel_admin_id'],(string)$permission)) panel_fail(403,'permission_denied');}
+    catch(Throwable $e) {panel_fail(503,'database_unavailable');}
+    // Existing environment permission maps remain an additional restriction.
     $raw = getenv('PANEL_ADMIN_PERMISSIONS');
     if ($raw !== false && $raw !== '') {
         $map = json_decode($raw, true);
@@ -32,6 +37,15 @@ function panel_require_admin($permission) {
         if (!is_array($allowed) || !in_array($permission, $allowed, true)) panel_fail(403, 'permission_denied');
     }
     $_SESSION['panel_last_seen'] = time();
+    static $auditRegistered=false;
+    if(!$auditRegistered && ($_SERVER['REQUEST_METHOD']??'GET')==='POST') {
+        $auditRegistered=true;$actor=(int)$_SESSION['panel_admin_id'];
+        $route=basename((string)($_SERVER['SCRIPT_FILENAME']??''));
+        $routes=['admin.php','packs.php','editor.php','content_edit.php','personal_content.php','importer.php','import_selective.php','movie_duplicates.php','revalidate_proxy.php'];
+        if(in_array($route,$routes,true)) register_shutdown_function(function()use($pdo,$actor,$route){
+            ops_audit($pdo,'request.'.pathinfo($route,PATHINFO_FILENAME).'.http_'.http_response_code(),null,$actor);
+        });
+    }
 }
 function panel_check_csrf() {
     if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') return;

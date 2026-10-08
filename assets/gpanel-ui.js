@@ -156,7 +156,7 @@
 /* Shared admin finishing layer: keeps all existing forms and handlers intact. */
 document.addEventListener('DOMContentLoaded', function () {
   if (!window.PANEL_CONFIG?.authenticated) return;
-  const links = [['admin.php','Tableau de bord','◈'],['editor.php','Gestion des Bouquets','▦'],['importer.php','Import par catégories','⇩'],['import_selective.php','Imports sélectifs','☷'],['personal_content.php','Contenus personnels','＋'],['panel_diagnostics.php','Diagnostic & Santé','♡'],['movie_duplicates.php','Regroupement VOD','▷']];
+  const links = [['admin.php','Tableau de bord','◈'],['editor.php','Gestion des Bouquets','▦'],['importer.php','Import par catégories','⇩'],['import_selective.php','Imports sélectifs','☷'],['personal_content.php','Contenus personnels','＋'],['panel_diagnostics.php','Diagnostic & Santé','♡'],['movie_duplicates.php','Regroupement VOD','▷'],['statistics.php','Statistiques','analytics'],['live_monitor.php','Monitoring Live','monitor'],['system_admin.php','Administration système','settings']];
   let sidebar = document.querySelector('.sidebar');
   if (!sidebar) {
     sidebar = document.createElement('aside'); sidebar.className = 'sidebar';
@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', function () {
   links.forEach(([href,label,icon])=>{
     let a=Array.from(sidebar.querySelectorAll('a')).find(a=>a.getAttribute('href')===href);
     if (!a) { a=document.createElement('a'); a.href=href; a.textContent=label; sidebar.insertBefore(a,sidebar.querySelector('.gp-sidebar-footer')); }
-    if (!a.querySelector('i,.gp-nav-icon')) { const span=document.createElement('span'); span.className='gp-nav-icon';span.textContent=icon;span.setAttribute('aria-hidden','true');a.prepend(span); }
+    if (!a.querySelector('i,.gp-nav-icon')) { const span=document.createElement('span'); span.className='gp-nav-icon';if(['analytics','monitor','settings'].includes(icon)){const paths={analytics:'M4 19V5m0 14h16M8 15v-4m5 4V7m5 8v-6',monitor:'M3 5h18v12H3zM8 21h8m-4-4v4M5 11h3l2-3 3 6 2-3h4',settings:'M12 3l8 4v5c0 5-8 9-8 9s-8-4-8-9V7zM8 12l3 3 5-6'};span.innerHTML='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="'+paths[icon]+'"/></svg>';}else{span.textContent=icon;}span.setAttribute('aria-hidden','true');a.prepend(span); }
     if (location.pathname.endsWith('/'+href)) { a.classList.add('active'); a.setAttribute('aria-current','page'); }
   });
   document.querySelectorAll('.alert').forEach(el=>{el.setAttribute('role',el.classList.contains('alert-danger')?'alert':'status');});

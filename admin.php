@@ -3,10 +3,12 @@ require_once __DIR__ . '/panel_security.php';
 panel_check_csrf();
 require 'config.php';
 require_once __DIR__.'/panel_packs.php';
+require_once __DIR__.'/panel_operations.php';
 require_once __DIR__.'/panel_revalidation.php';
 
 
 if (isset($_POST['logout'])) {
+    if(!empty($_SESSION['panel_admin_id'])) ops_audit($pdo,'auth.logout');
     $_SESSION = [];
     session_regenerate_id(true);
     header("Location: admin.php");
@@ -22,16 +24,18 @@ if (isset($_POST['login_btn'])) {
     $stmt->execute([$user_input]);
     $admin = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($admin && (password_verify($pass_input, $admin['password']) || (password_get_info($admin['password'])['algoName'] === 'unknown' && hash_equals($admin['password'], $pass_input)))) {
+    if ($admin && ops_authorize($pdo,(int)$admin['id'],'panel:read') && (password_verify($pass_input, $admin['password']) || (password_get_info($admin['password'])['algoName'] === 'unknown' && hash_equals($admin['password'], $pass_input)))) {
         session_regenerate_id(true);
         $_SESSION['panel_admin_id'] = (string)$admin['id'];
         $_SESSION['panel_language'] = panel_load_language($admin['id']);
         $_SESSION['panel_csrf'] = bin2hex(random_bytes(32));
         $_SESSION['panel_last_seen'] = time();
         $_SESSION['admin_logged'] = true;
+        ops_audit($pdo,'auth.login',null,(int)$admin['id']);
         header("Location: admin.php");
         exit;
     } else {
+        ops_audit($pdo,'auth.login_failed',null,0);
         $login_error = "Identifiant ou mot de passe incorrect.";
     }
 }
@@ -124,6 +128,7 @@ if(isset($_POST['add_client']) || isset($_POST['edit_client_btn']) || isset($_PO
             else {$pdo->prepare('UPDATE clients SET username=?,password=? WHERE id=?')->execute([$username,$password,$id]);$success='updated';}
             packs_assign($pdo,$id,$_POST);
         }
+        ops_audit($pdo,isset($_POST['delete_client'])?'client.deleted':(isset($_POST['add_client'])?'client.created':'client.updated'),$id);
         $pdo->commit();$cacheNotified=panel_revalidate();header('Location: admin.php?success='.$success.'&pack_cache='.($cacheNotified?'ok':'pending'));exit;
     } catch(Throwable $e) {if($pdo->inTransaction()) $pdo->rollBack();$message='<div class="alert alert-danger">'.htmlspecialchars($e instanceof InvalidArgumentException?$e->getMessage():'Enregistrement client indisponible.',ENT_QUOTES,'UTF-8').'</div>';if(!($e instanceof InvalidArgumentException)) error_log('Client pack: '.$e->getMessage());}
 }
@@ -140,6 +145,7 @@ if (isset($_POST['add_source'])) {
     $stmt = $pdo->prepare("INSERT INTO fournisseurs (nom, type, url_base, user, pass, mac_address, proxy) VALUES (?, ?, ?, ?, ?, ?, ?)");
     if($stmt->execute([$nom, $type, $url_base, $user, $pass, $mac_address, $proxy])) {
         $new_source_id = (int)$pdo->lastInsertId();
+        ops_audit($pdo,'source.created',$new_source_id);
         header("Location: importer.php?fournisseur_id=" . $new_source_id);
         exit;
     }
@@ -163,6 +169,7 @@ if (isset($_POST['edit_source_btn'])) {
             $stmtCat->execute([$oldTag, $newTag, $source_id]);
         }
 
+        ops_audit($pdo,'source.updated',$source_id);
         header("Location: admin.php?success=updated"); exit;
     }
 }
@@ -175,6 +182,7 @@ if (isset($_POST['delete_source'])) {
             $pdo->prepare("DELETE FROM streams WHERE fournisseur_id = ?")->execute([$id]);
             $pdo->prepare("DELETE FROM categories WHERE fournisseur_id = ?")->execute([$id]);
             $pdo->prepare("DELETE FROM fournisseurs WHERE id = ?")->execute([$id]);
+            ops_audit($pdo,'source.deleted',$id);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -257,6 +265,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
 <form id="panelLogout" method="POST" hidden><?= panel_csrf_field() ?><input name="logout" value="1"></form>
     <main class="main-content">
         <?= $message ?>
+        <?= ops_links() ?>
 
         <?php
         $hero_background = '/assets/background/head-banner.png';

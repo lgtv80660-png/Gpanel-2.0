@@ -33,4 +33,6 @@ header('Cache-Control: private, no-store');
 header('X-Content-Type-Options: nosniff');
 header('Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges');
 while (ob_get_level()) ob_end_clean();
+require_once __DIR__.'/panel_operations.php';
+ops_playback_hook($pdo,(int)$packClient['id'],(int)$stream_id,'movie');
 vod_relay($rows, $requested_extension, $method, $range);
