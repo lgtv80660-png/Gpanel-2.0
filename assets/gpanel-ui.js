@@ -20,7 +20,7 @@
   let selectedLanguage = ['fr','en','ar'].includes(window.PANEL_CONFIG?.lang) ? window.PANEL_CONFIG.lang : 'fr';
   function currentLang(){return selectedLanguage;}
   function t(key){return LANGS[currentLang()][key] || key;}
-  function currentTheme(){return localStorage.getItem(storageTheme)||'dark';}
+  function currentTheme(){return 'dark';}
   function keyForNode(node){ if(!node.parentElement) return ''; const t=(node.nodeValue||'').replace(/\s+/g,' ').trim(); return t; }
   function translate(root=document){
     const lang=currentLang(), dict=LANGS[lang]||LANGS.en;
@@ -54,7 +54,7 @@
     document.body.classList.toggle('gp-rtl',dict.dir==='rtl');
   }
   function setTheme(theme){
-    theme=theme==='light'?'light':'dark'; document.documentElement.dataset.theme=theme; localStorage.setItem(storageTheme,theme);
+    theme='dark'; document.documentElement.dataset.theme=theme; localStorage.setItem(storageTheme,theme);
     document.querySelectorAll('img[src*="g-panel-logo"]').forEach(img=>{ if(img.classList.contains('brand-mark')) return; img.src=theme==='dark'?'assets/g-panel-logo-dark.png':'assets/g-panel-logo.png'; });
     const icon=document.querySelector('#gp-theme-toggle i'); if(icon) icon.className=theme==='dark'?'fas fa-sun':'fas fa-moon';
     const text=document.querySelector('#gp-theme-toggle .gp-theme-text'); if(text) text.textContent=t(theme==='dark'?'Clair':'Sombre');
@@ -132,7 +132,7 @@
     const sidebar=document.querySelector('.sidebar'); if(!sidebar) return;
     sidebar.id='gp-navigation';
     const toggle=document.createElement('button'); toggle.type='button'; toggle.className='gp-mobile-nav';
-    toggle.textContent='☰ Menu'; toggle.setAttribute('aria-controls',sidebar.id); toggle.setAttribute('aria-expanded','false');
+    toggle.textContent='Menu'; toggle.setAttribute('aria-controls',sidebar.id); toggle.setAttribute('aria-expanded','false');
     const shade=document.createElement('div'); shade.className='gp-nav-shade';
     const close=()=>{document.body.classList.remove('gp-nav-open');toggle.setAttribute('aria-expanded','false');};
     toggle.addEventListener('click',()=>{const open=document.body.classList.toggle('gp-nav-open');toggle.setAttribute('aria-expanded',String(open));});
@@ -156,7 +156,7 @@
 /* Shared admin finishing layer: keeps all existing forms and handlers intact. */
 document.addEventListener('DOMContentLoaded', function () {
   if (!window.PANEL_CONFIG?.authenticated) return;
-  const links = [['admin.php','Tableau de bord','◈'],['editor.php','Gestion des Bouquets','▦'],['importer.php','Import par catégories','⇩'],['import_selective.php','Imports sélectifs','☷'],['personal_content.php','Contenus personnels','＋'],['panel_diagnostics.php','Diagnostic & Santé','♡'],['movie_duplicates.php','Regroupement VOD','▷'],['statistics.php','Statistiques','analytics'],['live_monitor.php','Monitoring Live','monitor'],['system_admin.php','Administration système','settings']];
+  const links = [];
   let sidebar = document.querySelector('.sidebar');
   if (!sidebar) {
     sidebar = document.createElement('aside'); sidebar.className = 'sidebar';
@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (shell && shell !== document.body) shell.classList.add('main-content');
     else document.body.classList.add('gp-import-progress');
     // UI initialized before this finishing layer: initialize navigation once.
-    const toggle = document.createElement('button'); toggle.type='button'; toggle.className='gp-mobile-nav'; toggle.textContent='☰ Menu';
+    const toggle = document.createElement('button'); toggle.type='button'; toggle.className='gp-mobile-nav'; toggle.textContent='Menu';
     toggle.setAttribute('aria-controls','gp-navigation'); toggle.setAttribute('aria-expanded','false'); sidebar.id='gp-navigation';
     toggle.onclick=()=>{const open=document.body.classList.toggle('gp-nav-open');toggle.setAttribute('aria-expanded',String(open));};
     document.body.append(toggle);

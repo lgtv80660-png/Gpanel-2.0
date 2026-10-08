@@ -5,6 +5,7 @@ require 'config.php';
 require_once __DIR__.'/panel_packs.php';
 require_once __DIR__.'/panel_operations.php';
 require_once __DIR__.'/panel_revalidation.php';
+require_once __DIR__.'/panel_visual.php';
 
 
 if (isset($_POST['logout'])) {
@@ -60,7 +61,7 @@ if (!isset($_SESSION['admin_logged']) || $_SESSION['admin_logged'] !== true):
         .btn-primary:hover { opacity: 0.9; }
     </style>
     <link rel="stylesheet" href="assets/gpanel.css">
-<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript></head>
+<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><script src="assets/cinema.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript><link rel="stylesheet" href="assets/cinema.css"></head>
 <body>
 <form id="panelLogout" method="POST" hidden><?= panel_csrf_field() ?><input name="logout" value="1"></form>
     <div class="login-panel">
@@ -245,78 +246,49 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         .copy-box span { color: var(--accent); }
     </style>
     <link rel="stylesheet" href="assets/gpanel.css">
-    <link rel="stylesheet" href="assets/packs.css"><script src="assets/packs-translations.js" defer></script><link rel="stylesheet" href="assets/dashboard-v2.css?v=20261007-4">
-<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript></head>
-<body class="dashboard-v2">
+    <link rel="stylesheet" href="assets/packs.css"><script src="assets/packs-translations.js" defer></script>
+<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><script src="assets/cinema.js" defer></script><noscript><style>body{visibility:visible!important}</style></noscript><link rel="stylesheet" href="assets/cinema.css"></head>
+<body class="dashboard-v2 gp-cinema dashboard-view-<?=gp_escape(in_array($_GET['view']??'',['clients','sources'],true)?$_GET['view']:'dashboard')?>">
+<?php gp_navigation(); ?>
 <script>
 (function () {
     try {
         var theme = localStorage.getItem('gpanel.theme');
         if (!theme) {
-            theme = 'light';
+            theme = 'dark';
             localStorage.setItem('gpanel.theme', theme);
         }
         document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
     } catch (error) {
-        document.documentElement.dataset.theme = 'light';
+        document.documentElement.dataset.theme = 'dark';
     }
 }());
 </script>
 <form id="panelLogout" method="POST" hidden><?= panel_csrf_field() ?><input name="logout" value="1"></form>
     <main class="main-content">
+        <?php gp_header((($_GET['view']??'')==='clients')?'Clients':((($_GET['view']??'')==='sources')?'Sources':'Dashboard')); ?>
         <?= $message ?>
-        <?= ops_links() ?>
-
         <?php
-        $hero_background = '/assets/background/head-banner.png';
-        foreach (['png', 'jpg', 'jpeg'] as $extension) {
-            $candidate = 'assets/background/head-banner.' . $extension;
-            if (is_file(__DIR__ . '/' . $candidate)) { $hero_background = '/' . $candidate; break; }
-        }
-        $dashboard_catalogue = $pdo->query('SELECT COUNT(*) FROM streams')->fetchColumn();
+        $gp_counts=$pdo->query("SELECT stream_type,COUNT(*) AS total FROM streams GROUP BY stream_type")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $gp_latest=$pdo->query("SELECT * FROM streams WHERE stream_type IN ('movie','series') ORDER BY stream_id DESC LIMIT 12")->fetchAll(PDO::FETCH_ASSOC);
+        if($gp_latest)try{$ids=array_column($gp_latest,'stream_id');$q=$pdo->prepare('SELECT stream_id,tmdb_id FROM movie_identifiers WHERE stream_id IN ('.implode(',',array_fill(0,count($ids),'?')).')');$q->execute($ids);$map=$q->fetchAll(PDO::FETCH_KEY_PAIR);foreach($gp_latest as &$r)if($r['stream_type']==='movie')$r['tmdb_id']=$map[$r['stream_id']]??null;unset($r);}catch(PDOException $e){}
+        $gp_feature=$gp_latest[0]??[];
+        $gp_live=$pdo->query("SELECT * FROM streams WHERE stream_type='live' AND stream_icon<>'' ORDER BY stream_id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC)?:[];
         ?>
-        <section class="dashboard-hero">
-            <div class="hero-banner"<?= $hero_background ? ' style="--hero-image:url(' . htmlspecialchars($hero_background, ENT_QUOTES, 'UTF-8') . ')"' : '' ?>>
-            <div class="hero-toolbar">
-                <a href="admin.php" class="dashboard-brand"><img src="assets/g-panel-logo.png" alt="G-PANEL"></a>
-                <details class="admin-menu">
-                    <summary><span class="avatar">A</span><span><b>Admin</b><small>Administrateur</small></span><i class="fas fa-chevron-down" aria-hidden="true"></i></summary>
-                    <div class="admin-menu-panel">
-                        <button type="submit" form="panelLogout">Déconnexion</button>
-                        <div class="dashboard-header-tools sidebar"><div class="gp-sidebar-footer"></div></div>
-                    </div>
-                </details>
-            </div>
-            <div class="hero-copy">
-            <h2>Bonjour, <em>Admin</em></h2>
-            <p class="hero-description">Pilotez vos clients, vos sources et votre catalogue IPTV depuis une seule interface.</p>
-            <div class="hero-actions"><button type="button" class="btn hero-primary" onclick="purgeNextJsCache()"><i class="fas fa-bolt"></i> Synchro app G-TV</button><a href="importer.php" class="btn hero-secondary"><i class="fas fa-sync-alt"></i> Forcer l'importation</a></div></div>
-            </div>
-            <div class="hero-metrics">
-                <div><i class="fas fa-users"></i><span>Clients<b><?= $total_clients ?></b></span></div>
-                <div><i class="fas fa-database"></i><span>Fournisseurs (Sources)<b><?= $total_sources ?></b></span></div>
-                <a href="packs.php" class="packs-kpi"><i class="fas fa-cube"></i><span>Packs<b><?= $total_packs ?></b></span><i class="fas fa-chevron-right kpi-arrow"></i></a>
-                <div><i class="fas fa-shield-alt"></i><span>Catalogue<b><?= $dashboard_catalogue ?></b></span></div>
-            </div>
-        </section>
-        <p class="shortcut-label">RACCOURCIS</p>
-        <div class="dashboard-shortcuts">
-            <a href="editor.php"><i class="fas fa-folder"></i><div>Gestionnaire de bouquet<small>Créer et organiser vos bouquets</small></div><span>›</span></a>
-            <a href="movie_duplicates.php"><i class="fas fa-layer-group"></i><div>Regroupement VOD<small>Regrouper vos contenus VOD</small></div><span>›</span></a>
-            <a href="import_selective.php"><i class="fas fa-filter"></i><div>Imports sélectifs<small>Importer des contenus ciblés</small></div><span>›</span></a>
-            <a href="personal_content.php"><i class="fas fa-folder"></i><div>Contenus personnels<small>Gérer vos contenus personnels</small></div><span>›</span></a>
+        <div class="gp-dashboard-only">
+        <section class="gp-hero"><?=gp_picture($gp_feature,'backdrop')?><div class="gp-hero-copy"><p class="gp-eyebrow">Votre univers. Votre contrôle.</p><h2>Le cinéma commence<br>dans votre catalogue.</h2><p>Pilotez vos accès, votre Live TV et vos collections depuis un espace unique.</p><div class="hero-actions"><a href="panel_catalog.php?type=movie" class="btn btn-primary">Explorer les films <?=gp_icon('arrow')?></a><button type="button" onclick="purgeNextJsCache()">Synchroniser G-TV</button></div></div></section>
+        <?php gp_kpis([['Clients',$total_clients,'users','blue'],['Contenus',array_sum($gp_counts),'folder','green'],['Films',$gp_counts['movie']??0,'film','violet'],['Séries',$gp_counts['series']??0,'film','gold']]); ?>
+        <div class="gp-feature-grid"><a class="gp-feature" href="panel_catalog.php?type=live"><?=gp_picture($gp_live,'poster')?><p class="gp-eyebrow">EN DIRECT</p><h2>Live TV</h2><p><?=number_format((int)($gp_counts['live']??0),0,',',' ')?> chaînes · Parcourir les bouquets</p></a><a class="gp-feature" href="panel_catalog.php?type=movie"><?=gp_picture($gp_feature,'backdrop')?><p class="gp-eyebrow">À LA DEMANDE</p><h2>Films &amp; Séries</h2><p>Vos collections, leurs images et leurs métadonnées</p></a></div>
+        <div class="gp-section-heading"><h2>Derniers ajouts</h2><a href="panel_catalog.php?type=all">Tout le catalogue →</a></div><div class="gp-media-rail"><?php foreach($gp_latest as $row) gp_media_card($row); ?></div><?php if(!$gp_latest):?><p class="v2-notice">Le catalogue est vide. Importez vos premiers contenus pour retrouver leurs affiches ici.</p><?php endif?>
         </div>
+        <section class="gp-client-summary"><?php
+        $gp_active=0;$gp_expired=0;$gp_unassigned=0;foreach($clients as $c){if(empty($c['pack_id']))$gp_unassigned++;elseif(!empty($c['expires_at']) && strtotime($c['expires_at'].' UTC')<=time())$gp_expired++;elseif((int)$c['active'] && (int)($c['pack_active']??0))$gp_active++;}
+        gp_kpis([['Clients',$total_clients,'users','blue'],['Accès actifs',$gp_active,'settings','green'],['Expirés',$gp_expired,'monitor','red'],['Sans pack',$gp_unassigned,'pack','gold']]); ?></section>
+
         <div class="row dashboard-grid">
-            <div class="col-xl-4 dashboard-access">
-                <div class="glass-panel diagnostic-card">
-                    <div class="card-heading"><i class="fas fa-heart"></i><div><h5>Diagnostic &amp; Santé</h5><p>Vérifier l'état du catalogue et des sources</p></div></div>
-                    <div class="diagnostic-illustration" aria-hidden="true"><div class="diagnostic-orbit"><i class="fas fa-shield-heart"></i><i class="fas fa-heartbeat diagnostic-pulse"></i></div></div>
-                    <a href="panel_diagnostics.php" class="btn btn-primary"><i class="fas fa-stethoscope"></i> Lancer le diagnostic <span>›</span></a>
-                </div>
-            </div>
             <div class="col-xl-8 dashboard-tables">
-                <div class="glass-panel">
-                    <div class="card-heading" id="clients"><i class="fas fa-users"></i><div><h5>Clients</h5><p>Accès IPTV créés pour vos abonnés</p></div><button class="btn client-create-button" type="button" data-bs-toggle="modal" data-bs-target="#createClientModal"><i class="fas fa-plus"></i> Ajouter un client</button><button class="btn filter-toggle" type="button" onclick="document.getElementById('client-filter').hidden = !document.getElementById('client-filter').hidden"><i class="fas fa-filter"></i> Filtrer</button></div><div id="client-filter" hidden><input class="form-control" aria-label="Rechercher un client" placeholder="Rechercher un client" oninput="document.querySelectorAll('#clients-table tbody tr').forEach(row => row.hidden = !row.cells[0].textContent.toLowerCase().includes(this.value.toLowerCase()))"></div>
+                <div class="glass-panel" id="gp-client-panel">
+                    <div class="card-heading" id="clients"><i class="fas fa-users"></i><div><h5>Clients</h5><p>Accès IPTV créés pour vos abonnés</p></div><button class="btn client-create-button" type="button" data-bs-toggle="modal" data-bs-target="#createClientModal"><i class="fas fa-plus"></i> Ajouter un client</button><button class="btn filter-toggle" type="button" onclick="document.getElementById('client-filter').hidden = !document.getElementById('client-filter').hidden"><i class="fas fa-filter"></i> Filtrer</button></div><div id="client-filter" class="v2-form"><label>Recherche<input id="gp-client-search" type="search" aria-label="Rechercher un client" placeholder="Rechercher un client"></label><label>Pack<select id="gp-client-pack"><option value="">Tous les packs</option><?php foreach($pack_options as $p):?><option value="<?=(int)$p['id']?>"><?=gp_escape($p['name'])?></option><?php endforeach?></select></label><label>Statut<select id="gp-client-state"><option value="">Tous les statuts</option><?php foreach(['Actif','Inactif','Expiré','Sans pack','Pack inactif'] as $state):?><option><?=gp_escape($state)?></option><?php endforeach?></select></label></div>
                     <div class="table-responsive">
                         <table id="clients-table" class="table table-borderless table-hover">
                             <thead>
@@ -329,7 +301,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                             </thead>
                             <tbody>
                                 <?php foreach ($clients as $c): ?>
-                                <tr>
+                                <tr data-pack="<?=(int)($c['pack_id']??0)?>">
                                     <td class="fw-bold" data-gp-skip><i class="fas fa-user-circle me-2 text-muted"></i><?= htmlspecialchars($c['username']) ?><br><?= packs_badge($c['pack_name'] ?? 'Aucun pack', $c['pack_level'] ?? '') ?></td>
                                     <td><span aria-label="Mot de passe masqué">••••••••</span></td>
                                     <td><span class="badge-active"><?= !(int)$c['active'] ? 'Inactif' : (empty($c['pack_id']) ? 'Sans pack' : (!(int)$c['pack_active'] ? 'Pack inactif' : (!empty($c['expires_at']) && strtotime($c['expires_at'].' UTC') <= time() ? 'Expiré' : 'Actif'))) ?></span><?php if(!empty($c['expires_at'])):?><small class="d-block text-muted"><?=htmlspecialchars($c['expires_at'],ENT_QUOTES,'UTF-8')?> UTC</small><?php endif?></td>
@@ -354,7 +326,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                     </div>
                 </div>
 
-                <div class="glass-panel">
+                <div class="glass-panel" id="gp-source-panel">
                     <div class="card-heading" id="sources"><i class="fas fa-server"></i><div><h5>Fournisseurs (Sources)</h5><p>Sources d’import du catalogue</p></div><button type="button" class="btn filter-toggle" data-bs-toggle="modal" data-bs-target="#createSourceModal"><i class="fas fa-plus"></i> Ajouter une source</button></div>
                     <div class="table-responsive">
                         <table class="table table-borderless table-hover">

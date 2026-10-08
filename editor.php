@@ -167,7 +167,7 @@ if ($mode === 'streams') {
         #videoPlayer { width: 100%; border-radius: 8px; background: #000; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
     </style>
     <link rel="stylesheet" href="assets/gpanel.css">
-<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><style>html:not(.gp-ready) body{visibility:hidden}</style><noscript><style>body{visibility:visible!important}</style></noscript></head>
+<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><script src="assets/cinema.js" defer></script><style>html:not(.gp-ready) body{visibility:hidden}</style><noscript><style>body{visibility:visible!important}</style></noscript><link rel="stylesheet" href="assets/cinema.css"></head>
 <body>
 
     <aside class="sidebar">

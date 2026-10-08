@@ -37,5 +37,5 @@ $page=max(1,(int)($_GET['page']??1)); $total=count($candidates);
 <?php if($page>1):?><a href="?page=<?=$page-1?>">Précédent</a><?php endif ?>
 <?php if($page*20<$total):?><a href="?page=<?=$page+1?>">Suivant</a><?php endif ?>
 </main>
-<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script>
+<?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><script src="assets/cinema.js" defer></script>
 </body></html>

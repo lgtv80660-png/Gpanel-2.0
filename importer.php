@@ -146,7 +146,7 @@ if (!$selectedProvider):
 .gp-import-card{background:var(--gp-panel,rgba(15,27,45,.92));border:1px solid var(--gp-border,#26374d);border-radius:16px;padding:30px;box-shadow:0 14px 40px rgba(0,0,0,.18); max-width: 700px; margin: 0 auto;}
 .import-logo{width:180px;display:block;margin:0 auto 15px;}
 </style>
-<style>html:not(.gp-ready) body{visibility:hidden}</style><noscript><style>body{visibility:visible!important}</style></noscript><?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script></head><body>
+<style>html:not(.gp-ready) body{visibility:hidden}</style><noscript><style>body{visibility:visible!important}</style></noscript><?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><script src="assets/cinema.js" defer></script><link rel="stylesheet" href="assets/cinema.css"></head><body>
 <div class="gp-import-shell">
   <div class="gp-import-top">
     <div class="gp-import-brand">
@@ -264,7 +264,7 @@ body{background:#0f1219;color:#eef6ff;}
 .disabled-item{opacity:0.5; pointer-events:none;}
 .badge-imported{background:rgba(22, 163, 74, 0.2); color:#16a34a; border: 1px solid #16a34a;}
 </style>
-<style>html:not(.gp-ready) body{visibility:hidden}</style><noscript><style>body{visibility:visible!important}</style></noscript><?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script></head><body>
+<style>html:not(.gp-ready) body{visibility:hidden}</style><noscript><style>body{visibility:visible!important}</style></noscript><?= panel_ui_bootstrap() ?><script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><script src="assets/cinema.js" defer></script><link rel="stylesheet" href="assets/cinema.css"></head><body>
 <form method="POST" id="importForm" action="importer.php"><?= panel_csrf_field() ?>
     <input type="hidden" name="fournisseur_id" value="<?= $fid ?>">
     <input type="hidden" name="step" value="3">
@@ -413,7 +413,7 @@ if ($step === 3):
         panel_fail(422, 'import_empty');
     }
 
-    echo '<!DOCTYPE html><html lang="' . panel_language() . '" dir="' . (panel_language() === 'ar' ? 'rtl' : 'ltr') . '"><head><meta charset="UTF-8"><title>G-PANEL — Import SQL</title><link rel="stylesheet" href="assets/gpanel.css">' . panel_ui_bootstrap() . '<script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script></head><body style="background:#0f1219;color:#fff;padding:40px;font-family:monospace;">';
+    echo '<!DOCTYPE html><html lang="' . panel_language() . '" dir="' . (panel_language() === 'ar' ? 'rtl' : 'ltr') . '"><head><meta charset="UTF-8"><title>G-PANEL — Import SQL</title><link rel="stylesheet" href="assets/gpanel.css">' . panel_ui_bootstrap() . '<script src="assets/panel-translations.js"></script><script src="assets/gpanel-ui.js" defer></script><script src="assets/cinema.js" defer></script><link rel="stylesheet" href="assets/cinema.css"></head><body style="background:#0f1219;color:#fff;padding:40px;font-family:monospace;">';
     echo '<h2><i class="fas fa-database text-info"></i> <span>'.h(panel_t('import_started')).'</span> <span data-gp-skip>'.h($nom).'</span></h2><hr style="border-color:#2d3240;">'; flush();
 
     $insertCat = $pdo->prepare("INSERT INTO categories (category_name,parent_id,visible,fournisseur_id,remote_category_id,content_type) VALUES (?,0,1,?,?,?)");
