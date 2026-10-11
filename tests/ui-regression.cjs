@@ -38,7 +38,7 @@ const path=require('node:path');
  await page.selectOption('#gp-lang-select','ar');
  await page.waitForFunction(()=>document.documentElement.lang==='ar');
  assert.equal(await page.locator('.folder-link span[data-gp-skip]').innerText(),'Visible');
- assert.equal(await page.locator('#providerFilter option[data-gp-skip]').innerText(),'Visible');
+ assert.equal(await page.locator('#providerFilter option[value="1"][data-gp-skip]').innerText(),'Visible');
  // Existing dynamic notifications must switch along with the rest of the interface.
  await page.evaluate(()=>{const el=document.createElement('p');el.id='fixture-notice';el.textContent='Ajout effectué avec succès !';document.body.append(el)});
  await page.waitForFunction(()=>document.querySelector('#fixture-notice').textContent==='تمت الإضافة بنجاح!');
@@ -61,5 +61,22 @@ const path=require('node:path');
  const missing=await page.evaluate(()=>{const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);const out=new Set();while(walker.nextNode()){const n=walker.currentNode;if(n.parentElement.closest('script,style,[data-gp-skip]'))continue;const text=(n.__gpOriginal||n.textContent).trim().replace(/\s+/g,' ');if(/[a-zA-ZÀ-ÿ]/.test(text)&&!['Z','×','Xtream','M3U','http://localhost'].includes(text)&&!Object.keys(GPanelUI.LANGS.fr).includes(text)&&!Object.values(GPanelUI.LANGS.en).includes(text))out.add(text)}return [...out]});
  assert.deepEqual(missing.filter(text=>text!=='XTREAM'&&!text.startsWith('https://fixture.invalid')),[]);
  console.log('PASS dashboard static labels covered by all three dictionaries');
+ for (const width of [1440,768,390]) {
+  await page.setViewportSize({width,height:900});
+  for (const route of ['admin.php','admin.php?tab=clients','admin.php?tab=providers','editor.php','editor.php?cat_id=10','importer.php','importer.php?fournisseur_id=1','import_selective.php','import_selective.php?fournisseur_id=1','movie_duplicates.php']) {
+   await page.goto('http://127.0.0.1:18976/'+route);await page.waitForSelector('html.gp-ready');
+   assert.equal(await page.locator('.sidebar a[aria-current="page"]').count(),1,route);
+   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),route+' overflows at '+width);
+   if (route.startsWith('import')) {
+    const main = page.locator('main,.main-content').first();
+    const box = await main.boundingBox();
+    assert(box && box.y < 200 && box.width > 200, route+' content pushed below viewport at '+width+': '+JSON.stringify(box));
+    assert(await main.evaluate(el=>!!el.closest('form') || [...el.querySelectorAll('form')].some(f=>f.getBoundingClientRect().height>0)),route+' form invisible');
+   }
+   if(width===390){const toggle=page.locator('.gp-mobile-nav');await toggle.click();assert.equal(await toggle.getAttribute('aria-expanded'),'true');await page.keyboard.press('Escape');assert.equal(await toggle.getAttribute('aria-expanded'),'false');}
+  }
+  console.log('PASS all admin screens navigation and overflow at '+width);
+ }
+ assert.deepEqual(errors,[]);
  await browser.close();
 })().catch(e=>{console.error(e);process.exit(1)});
