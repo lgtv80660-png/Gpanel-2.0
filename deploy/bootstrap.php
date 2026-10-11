@@ -1,36 +1,188 @@
+
 <?php
-// CLI only. Bootstrap a NEW empty database; never reset or migrate an unknown database.
-if (PHP_SAPI !== 'cli') exit(2);
+declare(strict_types=1);
+
+// G-PANEL 2.0 — Initialisation MySQL
+// Installation uniquement sur une base vide.
+// Aucune suppression ni migration automatique.
+
+if (PHP_SAPI !== 'cli') {
+    exit(2);
+}
+
+$pdo = null;
+$lockAcquired = false;
+
 try {
-    foreach (['MYSQLHOST','MYSQLDATABASE','MYSQLUSER'] as $key) if (!getenv($key)) throw new RuntimeException('configuration');
-    $port=getenv('MYSQLPORT')?:'3306';if(!ctype_digit($port))throw new RuntimeException('port');
-    $pdo=new PDO('mysql:host='.getenv('MYSQLHOST').';port='.$port.';dbname='.getenv('MYSQLDATABASE').';charset=utf8mb4',getenv('MYSQLUSER'),getenv('MYSQLPASSWORD')?:'',[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
-    if ((int)$pdo->query("SELECT GET_LOCK('gpanel-clean-bootstrap', 30)")->fetchColumn() !== 1) throw new RuntimeException('lock');
-    $tables = $pdo->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+    foreach (['MYSQLHOST', 'MYSQLDATABASE', 'MYSQLUSER'] as $key) {
+        if (!getenv($key)) {
+            throw new RuntimeException("Variable manquante : {$key}");
+        }
+    }
+
+    $host = getenv('MYSQLHOST');
+    $database = getenv('MYSQLDATABASE');
+    $user = getenv('MYSQLUSER');
+    $password = getenv('MYSQLPASSWORD') ?: '';
+    $port = getenv('MYSQLPORT') ?: '3306';
+
+    if (!ctype_digit($port)) {
+        throw new RuntimeException('MYSQLPORT invalide');
+    }
+
+    $pdo = new PDO(
+        "mysql:host={$host};port={$port};dbname={$database};charset=utf8mb4",
+        $user,
+        $password,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        ]
+    );
+
+    echo "Connexion MySQL établie.\n";
+
+    if ((int) $pdo->query(
+        "SELECT GET_LOCK('gpanel-clean-bootstrap', 30)"
+    )->fetchColumn() !== 1) {
+        throw new RuntimeException('Verrou MySQL indisponible');
+    }
+
+    $lockAcquired = true;
+
+    $tables = $pdo->query('SHOW TABLES')
+        ->fetchAll(PDO::FETCH_COLUMN);
+
     if (in_array('panel_installation', $tables, true)) {
-        if ($pdo->query('SELECT version FROM panel_installation WHERE id=1')->fetchColumn() !== '2.0') throw new RuntimeException('version');
+        $version = $pdo->query(
+            'SELECT version FROM panel_installation WHERE id=1'
+        )->fetchColumn();
+
+        if ($version !== '2.0') {
+            throw new RuntimeException(
+                'Version de base incompatible'
+            );
+        }
+
         echo "G-PANEL 2.0 database retained.\n";
     } else {
-        if ($tables || getenv('PANEL_BOOTSTRAP') !== '1') throw new RuntimeException('Dedicated empty database and PANEL_BOOTSTRAP=1 required');
-        $username = getenv('PANEL_ADMIN_USERNAME');
-        $password = getenv('PANEL_ADMIN_PASSWORD');
-        if (!$username || !preg_match('/^[a-zA-Z0-9_.-]{3,50}$/', $username) || !is_string($password) || strlen($password)<16) throw new RuntimeException('admin');
-        foreach (['/opt/gpanel/mysql.sql','/var/www/html/content_v2.sql','/var/www/html/movie_groups.sql'] as $file) {
-            $schema=file_get_contents($file);
-            foreach (explode(';', preg_replace('/--[^\n]*/','',$schema)) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
+        if (!empty($tables)) {
+            throw new RuntimeException(
+                'Base non vide : initialisation refusée'
+            );
         }
-        // Adds catalog indexes to this freshly-created database only.
-        $pdo->exec('CREATE INDEX idx_v2_catalog ON streams(stream_type,visible,category_id)');
-        $pdo->exec('CREATE INDEX idx_v2_identity ON streams(fournisseur_id,stream_type,remote_stream_id)');
-        $pdo->exec('CREATE INDEX idx_v2_episode_transport ON streams(fournisseur_id,stream_type,direct_source(191))');
-        $pdo->exec('CREATE INDEX idx_v2_category_identity ON categories(fournisseur_id,content_type,remote_category_id)');
-        $pdo->prepare('INSERT INTO admins(username,password) VALUES(?,?)')->execute([$username,password_hash($password,PASSWORD_DEFAULT)]);
-        $pdo->exec('CREATE TABLE panel_installation(id INT PRIMARY KEY,version VARCHAR(20) NOT NULL) ENGINE=InnoDB');
-        $pdo->exec("INSERT INTO panel_installation VALUES(1,'2.0')");
+
+        if (getenv('PANEL_BOOTSTRAP') !== '1') {
+            throw new RuntimeException(
+                'PANEL_BOOTSTRAP=1 requis'
+            );
+        }
+
+        $adminUser = getenv('PANEL_ADMIN_USERNAME');
+        $adminPass = getenv('PANEL_ADMIN_PASSWORD');
+
+        if (
+            !$adminUser ||
+            !preg_match('/^[a-zA-Z0-9_.-]{3,50}$/', $adminUser)
+        ) {
+            throw new RuntimeException(
+                'PANEL_ADMIN_USERNAME invalide'
+            );
+        }
+
+        if (
+            !is_string($adminPass) ||
+            strlen($adminPass) < 16
+        ) {
+            throw new RuntimeException(
+                'PANEL_ADMIN_PASSWORD : 16 caractères minimum'
+            );
+        }
+
+        $files = [
+            '/opt/gpanel/mysql.sql',
+            '/var/www/html/content_v2.sql',
+            '/var/www/html/movie_groups.sql',
+        ];
+
+        foreach ($files as $file) {
+            if (!is_readable($file)) {
+                throw new RuntimeException(
+                    "Fichier SQL introuvable : {$file}"
+                );
+            }
+
+            $schema = file_get_contents($file);
+
+            if ($schema === false) {
+                throw new RuntimeException(
+                    "Lecture SQL impossible : {$file}"
+                );
+            }
+
+            $schema = preg_replace('/--[^\n]*/', '', $schema);
+
+            foreach (explode(';', $schema) as $sql) {
+                $sql = trim($sql);
+
+                if ($sql !== '') {
+                    $pdo->exec($sql);
+                }
+            }
+
+            echo "Schéma importé : " . basename($file) . "\n";
+        }
+
+        $indexes = [
+            'CREATE INDEX idx_v2_catalog ON streams(stream_type,visible,category_id)',
+            'CREATE INDEX idx_v2_identity ON streams(fournisseur_id,stream_type,remote_stream_id)',
+            'CREATE INDEX idx_v2_episode_transport ON streams(fournisseur_id,stream_type,direct_source(191))',
+            'CREATE INDEX idx_v2_category_identity ON categories(fournisseur_id,content_type,remote_category_id)',
+        ];
+
+        foreach ($indexes as $sql) {
+            $pdo->exec($sql);
+        }
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO admins(username,password) VALUES(?,?)'
+        );
+
+        $stmt->execute([
+            $adminUser,
+            password_hash($adminPass, PASSWORD_DEFAULT),
+        ]);
+
+        $pdo->exec(
+            'CREATE TABLE panel_installation (
+                id INT PRIMARY KEY,
+                version VARCHAR(20) NOT NULL
+            ) ENGINE=InnoDB'
+        );
+
+        $pdo->exec(
+            "INSERT INTO panel_installation VALUES(1,'2.0')"
+        );
+
         echo "G-PANEL 2.0 initialized; no clients or provider credentials seeded.\n";
     }
-    $pdo->query("SELECT RELEASE_LOCK('gpanel-clean-bootstrap')");
 } catch (Throwable $e) {
-    fwrite(STDERR,"Initialization refused or failed. Check empty dedicated MySQL database, bootstrap variables and credentials. A partial initialization requires a new empty database; no automatic deletion occurs.\n");
+    // Ne jamais afficher les identifiants de connexion.
+    error_log(
+        'G-PANEL bootstrap error [' .
+        get_class($e) .
+        '] : ' .
+        $e->getMessage()
+    );
+
     exit(1);
+} finally {
+    if ($lockAcquired && $pdo instanceof PDO) {
+        try {
+            $pdo->query(
+                "SELECT RELEASE_LOCK('gpanel-clean-bootstrap')"
+            );
+        } catch (Throwable $ignored) {
+        }
+    }
 }
