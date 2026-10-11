@@ -1,9 +1,9 @@
 {
   "version": 2,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "https://gpanel.up.railway.app/$1"
+      "source": "/(.*)",
+      "destination": "https://gpanel-v2.up.railway.app/$1"
     }
   ]
 }
