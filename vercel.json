@@ -3,7 +3,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "https://gpanel.up.railway.app/$1"
+      "dest": "https://gpanel-v2.up.railway.app/$1"
     }
   ]
 }
