@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__.'/panel_movie_groups.php';
 
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -68,23 +69,13 @@ $sql = "
         s.container_extension,
         c.category_name
     FROM streams s
-    INNER JOIN fournisseurs f
+    LEFT JOIN fournisseurs f
         ON f.id = s.fournisseur_id
-    LEFT JOIN categories c
-        ON c.fournisseur_id = s.fournisseur_id
-        AND c.remote_category_id = s.category_id
-        AND (
-            (s.stream_type = 'live'
-                AND c.content_type = 'live')
-            OR
-            (s.stream_type = 'movie'
-                AND c.content_type = 'movie')
-            OR
-            (s.stream_type = 'episode'
-    AND c.content_type = 'series')
-        )
+    INNER JOIN categories c ON c.category_id = s.category_id
     WHERE s.visible = 1
-      AND f.active = 1
+      AND c.visible = 1
+      AND (f.active = 1 OR s.fournisseur_id = 0)
+      AND (s.stream_type <> 'episode' OR NOT EXISTS (SELECT 1 FROM content_settings px LEFT JOIN streams ps ON ps.stream_id=px.series_parent LEFT JOIN categories pc ON pc.category_id=ps.category_id WHERE px.stream_id=s.stream_id AND px.series_parent IS NOT NULL AND (ps.stream_id IS NULL OR pc.category_id IS NULL OR ps.visible<>1 OR pc.visible<>1)))
       AND s.stream_type IN ('live', 'movie', 'episode')
     ORDER BY
         s.stream_type,
@@ -110,6 +101,7 @@ echo "#EXTM3U\n";
 
 while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
     $id = (int)$row['stream_id'];
+    if ($row['stream_type']==='movie' && !movie_catalog_visible($pdo,$id)) continue;
 
     $name = trim((string)$row['stream_name']);
     $name = str_replace(["\r", "\n", '"'], ' ', $name);

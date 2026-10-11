@@ -1,7 +1,5 @@
-
 <?php
-// Configuration locale WAMP uniquement.
-// Ne pas utiliser ce fichier en production.
+// G-PANEL 2.0: explicit Railway MySQL variables only.
 
 function panel_db_env($name, $default = null) {
     $value = $_ENV[$name]
@@ -16,12 +14,13 @@ function panel_db_env($name, $default = null) {
 }
 
 try {
-    $host = panel_db_env('MYSQLHOST', '127.0.0.1');
+    $host = panel_db_env('MYSQLHOST');
     $port = panel_db_env('MYSQLPORT', '3306');
-    $db   = panel_db_env('MYSQLDATABASE', 'Gpanel');
-    $user = panel_db_env('MYSQLUSER', 'root');
+    $db   = panel_db_env('MYSQLDATABASE');
+    $user = panel_db_env('MYSQLUSER');
     $pass = panel_db_env('MYSQLPASSWORD', '');
 
+    if (!$host || !$db || !$user) throw new RuntimeException('Explicit database configuration required');
     $pdo = new PDO(
         "mysql:host={$host};port={$port};dbname={$db};charset=utf8mb4",
         $user,

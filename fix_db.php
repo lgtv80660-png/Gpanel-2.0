@@ -1,4 +1,5 @@
 <?php
+if (PHP_SAPI !== 'cli' || !in_array('--apply', $argv ?? [], true) || !in_array('--backup-confirmed', $argv ?? [], true)) { http_response_code(404); exit; }
 require 'config.php';
 try {
     // On passe stream_name en VARCHAR(1000) pour avoir une énorme marge

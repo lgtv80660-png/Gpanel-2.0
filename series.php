@@ -22,13 +22,15 @@ if (!$stmt->fetch()) {
     exit('Authentication failed');
 }
 
-$stmt = $pdo->prepare("SELECT s.*, f.type, f.url_base, f.user, f.pass
+$stmt = $pdo->prepare("SELECT s.*, COALESCE(f.type,'m3u') AS type, f.url_base, f.user, f.pass
                        FROM streams s
-                       INNER JOIN fournisseurs f ON s.fournisseur_id = f.id
-                       WHERE s.stream_id = ? AND s.stream_type = 'episode' AND s.visible = 1
+                       LEFT JOIN fournisseurs f ON s.fournisseur_id = f.id
+                       INNER JOIN categories c ON s.category_id = c.category_id
+                       WHERE s.stream_id = ? AND s.stream_type = 'episode' AND s.visible = 1 AND c.visible = 1 AND (f.active = 1 OR s.fournisseur_id = 0)
                        LIMIT 1");
 $stmt->execute([$stream_id]);
 $data = $stmt->fetch(PDO::FETCH_ASSOC);
+if ($data) {require_once __DIR__.'/panel_content.php'; try{$data=content_playback($pdo,$data);}catch(Throwable $e){$data=false;} if ($data && !content_episode_allowed($pdo,(int)$data['stream_id'])) $data=false;}
 
 if (!$data) {
     http_response_code(404);

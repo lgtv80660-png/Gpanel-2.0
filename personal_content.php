@@ -1,0 +1,25 @@
+<?php
+require_once __DIR__.'/panel_security.php';panel_require_admin('catalog:edit');panel_check_csrf();
+require __DIR__.'/config.php';require_once __DIR__.'/panel_content.php';require_once __DIR__.'/panel_layout.php';require_once __DIR__.'/panel_import.php';require_once __DIR__.'/panel_revalidation.php';
+$notice='';
+if(($_SERVER['REQUEST_METHOD']??'GET')==='POST')try{
+ panel_import_require_transactions($pdo);$pdo->beginTransaction();$id=(int)($_POST['id']??0);$op=$_POST['op']??'';
+ if($op==='create_category'){$name=trim((string)($_POST['name']??''));$kind=$_POST['kind']??'';if($name===''||mb_strlen($name)>100||!in_array($kind,['live','movie','series'],true))throw new RuntimeException('Nom et type de catégorie valides requis.');$pdo->prepare('INSERT INTO categories(category_name,parent_id,visible,fournisseur_id,content_type) VALUES (?,0,1,0,?)')->execute([$name,$kind]);}
+ elseif(in_array($op,['rename_category','delete_category'],true)){
+  $q=$pdo->prepare('SELECT * FROM categories WHERE category_id=? AND COALESCE(fournisseur_id,0)=0');$q->execute([$id]);if(!$q->fetch())throw new RuntimeException('Catégorie personnelle requise.');
+  if($op==='delete_category'){$q=$pdo->prepare('SELECT COUNT(*) FROM streams WHERE category_id=?');$q->execute([$id]);if($q->fetchColumn())throw new RuntimeException('Déplacer ou supprimer explicitement ses contenus avant la catégorie.');if(($_POST['confirmation']??'')!=='SUPPRIMER '.$id)throw new RuntimeException('Confirmation requise : SUPPRIMER '.$id);$pdo->prepare('DELETE FROM categories WHERE category_id=?')->execute([$id]);}
+  else{$name=trim((string)($_POST['name']??''));if($name===''||mb_strlen($name)>100)throw new RuntimeException('Nom valide requis.');$pdo->prepare('UPDATE categories SET category_name=? WHERE category_id=?')->execute([$name,$id]);}
+ }else throw new RuntimeException('Action invalide.');
+ $pdo->commit();panel_revalidate();$notice='Catégorie enregistrée.';
+}catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();$notice=$e instanceof RuntimeException&&!($e instanceof PDOException)?$e->getMessage():'Échec : aucune modification appliquée.';}
+$cats=$pdo->query('SELECT * FROM categories WHERE COALESCE(fournisseur_id,0)=0 ORDER BY category_name')->fetchAll();
+$page=max(1,(int)($_GET['page']??1));$total=(int)$pdo->query('SELECT COUNT(*) FROM streams WHERE fournisseur_id=0')->fetchColumn();$pages=max(1,(int)ceil($total/50));$page=min($page,$pages);
+$rows=$pdo->query('SELECT s.*,c.category_name FROM streams s LEFT JOIN categories c ON c.category_id=s.category_id WHERE s.fournisseur_id=0 ORDER BY s.stream_id DESC LIMIT 50 OFFSET '.(($page-1)*50))->fetchAll();
+v2_begin('Contenus personnels'); ?>
+<p class="v2-muted">Vos catégories, liens et métadonnées sont indépendants des imports fournisseur. Publication via le catalogue Xtream, la playlist M3U et les lectures existantes.</p>
+<?php if($notice):?><p class="v2-notice"><?=v2_h($notice)?></p><?php endif?>
+<div class="v2-form"><?php foreach(['live'=>'Ajouter un Live','movie'=>'Ajouter un film','series'=>'Ajouter une série','episode'=>'Ajouter un épisode'] as $k=>$label):?><a class="v2-badge" href="content_edit.php?kind=<?=$k?>"><?=$label?></a><?php endforeach?></div>
+<section class="glass-panel"><h2>Catégories personnelles</h2><form method="post" class="v2-form"><?=panel_csrf_field()?><input type="hidden" name="op" value="create_category"><label>Nom<input name="name" required maxlength="100"></label><label>Type<select name="kind"><option value="live">Live</option><option value="movie">Films</option><option value="series">Séries</option></select></label><button>Créer la catégorie</button></form>
+<?php foreach($cats as $cat):$id=(int)$cat['category_id'];?><details><summary><?=v2_h($cat['category_name'])?> · <?=v2_h($cat['content_type'])?> · #<?=$id?></summary><form method="post" class="v2-form"><?=panel_csrf_field()?><input type="hidden" name="id" value="<?=$id?>"><label>Nom<input name="name" value="<?=v2_h($cat['category_name'])?>" maxlength="100" required></label><button name="op" value="rename_category">Renommer</button></form><form method="post" class="v2-form"><?=panel_csrf_field()?><input type="hidden" name="id" value="<?=$id?>"><label>Supprimer si vide : saisir SUPPRIMER <?=$id?><input name="confirmation" required></label><button name="op" value="delete_category">Supprimer la catégorie</button></form></details><?php endforeach?></section>
+<div class="v2-table"><table><tr><th>Contenu</th><th>Type / catégorie</th><th>État</th><th>Gestion</th></tr><?php foreach($rows as $row):?><tr><td><?=v2_h($row['stream_name'])?><small>#<?=(int)$row['stream_id']?></small></td><td><?=v2_h($row['stream_type'])?><small><?=v2_h($row['category_name'])?></small></td><td><?=$row['visible']?'Actif':'Inactif'?></td><td><a href="content_edit.php?id=<?=(int)$row['stream_id']?>">Modifier / désactiver / supprimer</a></td></tr><?php endforeach?></table></div><p><?=$total?> contenus · page <?=$page?> / <?=$pages?></p><a href="?page=<?=max(1,$page-1)?>">Précédente</a> · <a href="?page=<?=min($pages,$page+1)?>">Suivante</a>
+<?php v2_end();

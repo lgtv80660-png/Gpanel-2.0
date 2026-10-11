@@ -5,6 +5,12 @@ function panel_language() {
 }
 function panel_t($key) {
     $messages = [
+        'sync_configuration_missing_or_invalid' => ['Synchro non configurée : vérifiez URL HTTPS et secret.', 'Sync URL or secret missing.', 'Sync configuration missing.'],
+        'sync_curl_unavailable' => ['Extension cURL indisponible.', 'cURL unavailable.', 'cURL unavailable.'],
+        'sync_transport_failed' => ['Backend injoignable ou délai dépassé.', 'Backend unreachable or timed out.', 'Backend unreachable.'],
+        'sync_auth_rejected' => ['Secret de synchronisation refusé par le backend.', 'Backend rejected sync secret.', 'Sync authentication rejected.'],
+        'sync_backend_failed' => ['Backend en erreur : synchronisation non confirmée.', 'Backend sync failed.', 'Backend sync failed.'],
+        'sync_response_invalid' => ['Réponse backend invalide : synchronisation non confirmée.', 'Invalid backend acknowledgement.', 'Invalid backend response.'],
         'auth_required' => ['Connexion administrateur requise.', 'Administrator login required.', 'يجب تسجيل الدخول كمدير.'],
         'permission_denied' => ['Permission refusée.', 'Permission denied.', 'الإذن مرفوض.'],
         'csrf_invalid' => ['Session du formulaire invalide. Rechargez la page.', 'Invalid form session. Reload the page.', 'جلسة النموذج غير صالحة. أعد تحميل الصفحة.'],

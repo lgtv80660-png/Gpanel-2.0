@@ -14,7 +14,7 @@ if (isset($_POST['logout'])) {
 $login_error = '';
 if (isset($_POST['login_btn'])) {
     $user_input = trim($_POST['username'] ?? '');
-    $pass_input = trim($_POST['password'] ?? '');
+    $pass_input = $_POST['password'] ?? '';
 
     $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ?");
     $stmt->execute([$user_input]);
@@ -237,7 +237,10 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
         <a href="editor.php"><i class="fas fa-folder-open"></i> Gestion des Bouquets</a>
         <div class="gp-section-label">Gestion</div><a href="#clients"><i class="fas fa-users"></i> Gestion Clients</a>
         <a href="#sources"><i class="fas fa-server"></i> Fournisseurs (Sources)</a>
+        <a href="personal_content.php">Contenus personnels</a><a href="panel_diagnostics.php">Diagnostic &amp; Santé</a><a href="movie_duplicates.php"><i class="fas fa-layer-group"></i> Regroupement VOD</a>
+        <a href="import_selective.php"><i class="fas fa-filter"></i> Imports sélectifs</a>
         <a href="importer.php"><i class="fas fa-sync-alt"></i> Forcer l'importation</a>
+        <a href="panel_diagnostics.php" target="_blank" rel="noopener"><i class="fas fa-stethoscope"></i> Diagnostic catalogue V2</a>
 
         <a href="#" onclick="purgeNextJsCache(); return false;" style="color: #00d2ff;">
             <i class="fas fa-bolt"></i> Synchro App G-TV
@@ -248,7 +251,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
 
     <main class="main-content">
         <header class="top-header">
-            <div class="gp-page-title"><div><div class="eyebrow">G-PANEL / Overview</div><h1>Tableau de bord</h1></div><span class="gp-chip"><i class="fas fa-shield-halved"></i> Système opérationnel</span></div>
+            <div class="gp-page-title"><div><div class="eyebrow">G-PANEL V2 / Administration</div><h1>Tableau de bord</h1></div><span class="gp-chip"><i class="fas fa-shield-halved"></i> Catalogue administré</span></div>
             <div class="user-profile">
                 <div class="avatar">Z</div>
                 <div>
@@ -363,7 +366,7 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
                                 <?php foreach ($clients as $c): ?>
                                 <tr>
                                     <td class="fw-bold" data-gp-skip><i class="fas fa-user-circle me-2 text-muted"></i><?= htmlspecialchars($c['username']) ?></td>
-                                    <td><code data-gp-skip><?= htmlspecialchars($c['password']) ?></code></td>
+                                    <td><span aria-label="Mot de passe masqué">••••••••</span></td>
                                     <td><span class="badge-active"><i class="fas fa-circle me-1" style="font-size:8px;"></i> Actif</span></td>
                                     <td class="text-end">
                                         <button class="btn btn-sm btn-info-custom me-1" onclick="showCredentials('<?= htmlspecialchars($c['username']) ?>', '<?= htmlspecialchars($c['password']) ?>')">
@@ -587,16 +590,16 @@ $fournisseurs = $pdo->query("SELECT * FROM fournisseurs ORDER BY id DESC")->fetc
             new bootstrap.Modal(document.getElementById('editSourceModal')).show();
         }
 
-        function purgeNextJsCache() {
-            if (!confirm(GPanelUI.t("Voulez-vous réinitialiser le cache de l'application G-TV ?"))) return;
-            
-            fetch('revalidate_proxy.php', {method:'POST', headers:{'X-CSRF-Token':window.PANEL_CONFIG.csrf}})
-                .then(res => {
-                    if(!res.ok) throw new Error(GPanelUI.t("❌ Erreur de communication avec l'application."));
-                    return res.json();
-                })
-                .then(data => alert(data.message))
-                .catch(err => alert(GPanelUI.t("❌ Erreur de communication avec l'application.")));
+        async function purgeNextJsCache() {
+            if (window.gpanelSyncRunning) return;
+            window.gpanelSyncRunning = true;
+            try {
+                const response = await fetch('revalidate_proxy.php', {method:'POST', headers:{'X-CSRF-Token':window.PANEL_CONFIG.csrf}, signal:AbortSignal.timeout(12000)});
+                const data = await response.json();
+                if (!response.ok || data.success !== true) throw new Error(data.error?.message || 'Synchronisation non confirmée.');
+                alert('Synchronisation confirmée. Rechargez le catalogue GTV pour récupérer les nouvelles données.');
+            } catch(error) { alert(error.name === 'TimeoutError' ? 'Délai dépassé : synchronisation non confirmée.' : error.message); }
+            finally { window.gpanelSyncRunning = false; }
         }
     </script>
 

@@ -17,29 +17,16 @@ $stmt = $pdo->prepare('SELECT id FROM clients WHERE LOWER(username) = ? AND pass
 $stmt->execute([$user, $pass]);
 if (!$stmt->fetch()) { http_response_code(401); exit('Authentication failed'); }
 
-$stmt = $pdo->prepare("SELECT s.*, f.type, f.url_base, f.user, f.pass
-                       FROM streams s INNER JOIN fournisseurs f ON s.fournisseur_id = f.id
-                       WHERE s.stream_id = ? AND s.stream_type = 'movie' AND s.visible = 1 LIMIT 1");
-$stmt->execute([$stream_id]);
-$data = $stmt->fetch(PDO::FETCH_ASSOC);
-if (!$data) { http_response_code(404); exit('Movie not found'); }
-
-if ($data['type'] === 'xtream') {
-    // The stored provider extension is authoritative. This prevents a client
-    // forcing .mp4 when the real file is .mkv/.avi/etc.
-    $extension = strtolower(trim((string)($data['container_extension'] ?? '')));
-    $extension = preg_replace('/[^a-z0-9]/i', '', $extension);
-    if ($extension === '') $extension = $requested_extension ?: 'mp4';
-    $url_finale = rtrim($data['url_base'], '/') . '/movie/'
-        . rawurlencode((string)$data['user']) . '/'
-        . rawurlencode((string)$data['pass']) . '/'
-        . rawurlencode((string)$data['direct_source']) . '.' . $extension;
-} elseif ($data['type'] === 'm3u') {
-    $url_finale = $data['direct_source'];
-} else {
-    http_response_code(502); exit('Unsupported provider type');
-}
-
-header('Location: ' . $url_finale, true, 302);
-exit;
-?>
+require_once __DIR__.'/panel_movie_groups.php';
+require_once __DIR__.'/panel_vod_relay.php';
+$method = $_SERVER['REQUEST_METHOD'];
+if (!in_array($method, ['GET','HEAD'], true)) { http_response_code(405); header('Allow: GET, HEAD, OPTIONS'); exit; }
+$range = $_SERVER['HTTP_RANGE'] ?? '';
+if ($range !== '' && !preg_match('/^bytes=\d*-\d*$/D', $range)) { http_response_code(416); exit; }
+$rows = vod_candidates($pdo, $stream_id, isset($_GET['backup_stream']) ? (string)$_GET['backup_stream'] : null);
+if (!$rows) { http_response_code(404); exit('Movie not found'); }
+header('Cache-Control: private, no-store');
+header('X-Content-Type-Options: nosniff');
+header('Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges');
+while (ob_get_level()) ob_end_clean();
+vod_relay($rows, $requested_extension, $method, $range);

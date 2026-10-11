@@ -3,6 +3,7 @@ require_once __DIR__ . '/panel_security.php';
 panel_require_admin('catalog:import');
 panel_check_csrf();
 require_once __DIR__ . '/panel_revalidation.php';
+require_once __DIR__ . '/panel_import.php';
 // V16.1 - Importation AJAX + Détection des filtres + Noms personnalisés + BULK INSERT (Optimisation Vitesse)
 if (function_exists('apache_setenv')) { @apache_setenv('no-gzip', 1); }
 @ini_set('zlib.output_compression', 0);
@@ -22,17 +23,6 @@ set_time_limit(3600);
 ini_set('memory_limit', '2048M');
 
 function h($v) { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
-function normalize_ext($ext, $fallback = null) {
-    $ext = strtolower(trim((string)$ext));
-    $ext = preg_replace('/[^a-z0-9]/i', '', $ext);
-    return $ext !== '' ? $ext : $fallback;
-}
-function infer_ext_from_url($url) {
-    $path = parse_url((string)$url, PHP_URL_PATH);
-    if (!$path) return null;
-    $ext = pathinfo($path, PATHINFO_EXTENSION);
-    return normalize_ext($ext, null);
-}
 function fetch_data_stream($url, $headers = []) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -54,56 +44,6 @@ function fetch_data_stream($url, $headers = []) {
 // =========================================================
 // NOUVELLE FONCTION OPTIMISÉE AVEC BULK INSERT (BATCH 500)
 // =========================================================
-function process_and_insert_streams($pdo, $fid, $kind, $type, $items, $catMap) {
-    if (empty($items)) return 0;
-    
-    $count = 0;
-    $batchSize = 500; // Nombre de flux insérés par requête
-    $placeholders = [];
-    $values = [];
-    
-    $sqlBase = "INSERT INTO streams (fournisseur_id,stream_name,stream_icon,stream_type,category_id,direct_source,visible,container_extension,remote_stream_id,vod_plot,vod_cast,vod_director,vod_genre,vod_release_date,vod_rating,vod_rating_5based,vod_added,vod_backdrop,vod_trailer,vod_runtime) VALUES ";
-
-    foreach ($items as $s) {
-        if (!is_array($s)) continue;
-        $plot=$cast=$director=$genre=$release=$rating=$rating5=$added=$backdrop=$trailer=$runtime=null;
-        
-        if ($type === 'm3u') {
-            $name=(string)($s['name']??''); $icon=(string)($s['icon']??''); $source=(string)($s['url']??''); $rid=$source; $catRid=(string)($s['group']??'Général'); $ext=normalize_ext($s['ext'] ?? null, infer_ext_from_url($source));
-        } elseif ($type === 'stalker') {
-            $name=(string)($s['name']??$s['title']??''); $icon=(string)($s['logo']??$s['icon']??''); $source=(string)($s['cmd']??$s['url']??''); $rid=(string)($s['id']??$s['ch_id']??$s['cmd']??''); $catRid=(string)($s['category_id']??$s['tv_genre_id']??$s['genre_id']??$s['cat_id']??''); $ext=null;
-        } else {
-            $name=(string)($s['name']??''); $icon=(string)($s['stream_icon']??$s['cover']??$s['cover_big']??''); $source=(string)($s['stream_id']??$s['series_id']??''); $rid=$source; $catRid=(string)($s['category_id']??''); $ext=normalize_ext($s['container_extension'] ?? $s['container_ext'] ?? null, null); if (!$ext && !empty($s['direct_source'])) $ext=infer_ext_from_url($s['direct_source']);
-        }
-        
-        if (!isset($catMap[$catRid]) || $name==='' || $source==='') continue;
-        
-        $name = mb_substr($name, 0, 900, 'UTF-8');
-        
-        // Ajout des valeurs pour le batch
-        $placeholders[] = '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
-        array_push($values, $fid, $name, $icon, $kind, $catMap[$catRid], $source, 1, $ext, $rid, $plot, $cast, $director, $genre, $release, $rating, $rating5, $added, $backdrop, $trailer, $runtime);
-        $count++;
-
-        // Si le lot atteint la taille max (500), on exécute l'insertion
-        if (count($placeholders) >= $batchSize) {
-            $stmt = $pdo->prepare($sqlBase . implode(',', $placeholders));
-            $stmt->execute($values);
-            // Réinitialisation des tableaux pour le prochain lot
-            $placeholders = [];
-            $values = [];
-        }
-    }
-    
-    // Insertion des éléments restants qui n'auraient pas atteint 500
-    if (!empty($placeholders)) {
-        $stmt = $pdo->prepare($sqlBase . implode(',', $placeholders));
-        $stmt->execute($values);
-    }
-    
-    return $count;
-}
-
 // ==========================================
 // MOTEUR AJAX (Compteurs Anti-Ban)
 // ==========================================
@@ -216,6 +156,7 @@ if (!$selectedProvider):
     <a class="btn btn-outline-light" href="admin.php"><i class="fas fa-arrow-left"></i> Retour</a>
   </div>
   <div class="gp-import-card">
+    <p><a href="import_selective.php">Import sélectif individuel (contenus, formats, qualités)</a></p>
     <img src="assets/g-panel-logo.png" class="import-logo" alt="G-PANEL">
     <h3 class="text-center mb-4">Choisir une source</h3>
     <form method="POST"><?= panel_csrf_field() ?>
@@ -461,8 +402,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 // ==========================================
 if ($step === 3):
     $importSucceeded = true;
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') panel_fail(405, 'invalid_request');
     $selectedCats = $_POST['selected_cats'] ?? [];
     if (!is_array($selectedCats)) panel_fail(422, 'invalid_request');
+    foreach ($selectedCats as $kind => $ids) {
+        if (!in_array($kind, ['live','movie','series'], true) || !is_array($ids) || array_filter($ids, function ($id) { return !is_scalar($id); })) panel_fail(422, 'invalid_request');
+    }
     
     if (empty($selectedCats['live']) && empty($selectedCats['movie']) && empty($selectedCats['series'])) {
         panel_fail(422, 'import_empty');
@@ -517,29 +462,12 @@ if ($step === 3):
         
         try {
             if (empty($remoteCats[$kind])) throw new RuntimeException('Invalid categories');
+            panel_import_lock($pdo, $fid);
+            panel_import_require_transactions($pdo);
             $pdo->beginTransaction();
 
-            $stmtCustom = $pdo->prepare("SELECT remote_category_id, category_name FROM categories WHERE fournisseur_id = ? AND content_type = ?");
-            $stmtCustom->execute([$fid, $kind]);
-            $existingCustomNames = $stmtCustom->fetchAll(PDO::FETCH_KEY_PAIR);
+            $catMap = panel_import_categories($pdo, $fid, $kind, $remoteCats[$kind], $selectedCats[$kind], $nom);
 
-            if ($kind === 'series') $pdo->prepare("DELETE FROM streams WHERE fournisseur_id = ? AND stream_type = 'episode'")->execute([$fid]);
-            $pdo->prepare("DELETE FROM streams WHERE fournisseur_id = ? AND stream_type = ?")->execute([$fid, $kind]);
-            $pdo->prepare("DELETE FROM categories WHERE fournisseur_id = ? AND content_type = ?")->execute([$fid, $kind]);
-
-            $catMap = [];
-            foreach ($remoteCats[$kind] as $c) {
-                $rid = trim((string)($c['category_id'] ?? $c['id'] ?? ''));
-                $name = trim((string)($c['category_name'] ?? $c['title'] ?? $c['name'] ?? 'Général'));
-                if ($rid === '') $rid = $name;
-
-                if (in_array($rid, $selectedCats[$kind])) {
-                    $display = isset($existingCustomNames[$rid]) ? $existingCustomNames[$rid] : mb_substr('['.$nom.'] '.$name, 0, 250, 'UTF-8');
-                    $insertCat->execute([$display, $fid, $rid, $kind]);
-                    $catMap[$rid] = (int)$pdo->lastInsertId();
-                }
-            }
-            
             $total_inserted = 0;
 
             // Appel de la fonction sans passer $insertStream
@@ -611,6 +539,8 @@ if ($step === 3):
             $importSucceeded = false;
             if($pdo->inTransaction()) $pdo->rollBack();
             echo "<p style='color:#dc2626;'><span>".h(panel_t('sql_error'))."</span> ".h(panel_t('import_failed'))."</p>"; flush();
+        } finally {
+            panel_import_lock($pdo, $fid, true);
         }
     }
 
