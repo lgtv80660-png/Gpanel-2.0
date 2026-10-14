@@ -22,6 +22,10 @@ require_once __DIR__.'/panel_packs.php';
 $packAccess=packs_access($pdo,(int)$packClient['id']);
 if(!isset($packAccess[(int)$stream_id]) || $packAccess[(int)$stream_id]['stream_type']!=='live') {http_response_code(403);exit('Content not authorized');}
 
+// Local opt-in only; production behavior is unchanged unless explicitly enabled.
+require_once __DIR__.'/panel_source_relay.php';
+if(sources_relay_enabled())sources_relay_open($pdo,(int)$packClient['id'],(int)$stream_id,$extension);
+
 $stmt = $pdo->prepare("SELECT s.*, COALESCE(f.type,'m3u') AS type, f.url_base, f.user, f.pass, f.mac_address
                        FROM streams s LEFT JOIN fournisseurs f ON s.fournisseur_id = f.id
                        INNER JOIN categories c ON s.category_id = c.category_id
