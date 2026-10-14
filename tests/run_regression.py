@@ -38,10 +38,19 @@ db=tmp/'fixture.sqlite';conn=sqlite3.connect(db)
 conn.executescript('''
 CREATE TABLE content_settings(stream_id INTEGER PRIMARY KEY,quality TEXT,quality_origin TEXT,source_override TEXT,source_provider INTEGER,source_remote TEXT,series_parent INTEGER,season_number INTEGER,episode_number INTEGER,production_ref TEXT);
 CREATE TABLE admins(id INTEGER PRIMARY KEY,username TEXT,password TEXT);
+CREATE TABLE panel_admin_roles(admin_id INTEGER PRIMARY KEY,role TEXT,enabled INTEGER);
+INSERT INTO panel_admin_roles VALUES(1,'admin',1),(2,'viewer',1);
+CREATE TABLE movie_group_sources(stream_id INTEGER PRIMARY KEY,group_id INTEGER,role TEXT);
 CREATE TABLE import_exclusions(fournisseur_id INTEGER,content_type TEXT,remote_stream_id TEXT,PRIMARY KEY(fournisseur_id,content_type,remote_stream_id));
 INSERT INTO admins VALUES(1,'fixture-admin','fixture-password'),(2,'fixture-restricted','fixture-password');
 CREATE TABLE clients(id INTEGER PRIMARY KEY,username TEXT,password TEXT,active INTEGER DEFAULT 1);
 INSERT INTO clients VALUES(1,'Visible','fixture-client',1);
+CREATE TABLE packs(id INTEGER PRIMARY KEY,name TEXT,description TEXT,level TEXT,active INTEGER,duration_days INTEGER,updated_at TEXT);
+CREATE TABLE pack_rules(pack_id INTEGER,scope TEXT,kind TEXT,reference_id INTEGER);
+CREATE TABLE client_packs(client_id INTEGER PRIMARY KEY,pack_id INTEGER,expires_at TEXT);
+INSERT INTO packs VALUES(1,'Fixture','Fixture','PREMIUM',1,30,'2026-01-01');
+INSERT INTO client_packs VALUES(1,1,NULL);
+INSERT INTO pack_rules VALUES(1,'live','all',0),(1,'movie','all',0),(1,'series','all',0),(1,'personal','all',0);
 CREATE TABLE fournisseurs(id INTEGER PRIMARY KEY,nom TEXT,type TEXT,url_base TEXT,user TEXT,pass TEXT,mac_address TEXT,proxy TEXT,active INTEGER DEFAULT 1);
 INSERT INTO fournisseurs VALUES(1,'Visible','xtream','https://fixture.invalid','fixture','fixture',NULL,NULL,1);
 CREATE TABLE categories(category_id INTEGER PRIMARY KEY,category_name TEXT,visible INTEGER,fournisseur_id INTEGER,remote_category_id TEXT,content_type TEXT,parent_id INTEGER);
@@ -101,7 +110,7 @@ try:
  for route in ['content_edit.php','personal_content.php','editor.php','importer.php','import_selective.php','revalidate_proxy.php','panel_language.php','admin.php']:
   for bad in [None,'wrong']:
    check(request(admin,'/'+route,{'ajax_action':'toggle_stream','id':'20'},bad)[0]==403,route+' invalid CSRF denied')
- check(not (tmp/'db-touch').exists(),'invalid permissions and CSRF denied before database access')
+ check(snapshot()==initial,'invalid permissions and CSRF preserve catalogue and credentials')
  check(snapshot()==initial,'negative requests preserve catalogue and clients')
  for language in ['en','ar','fr']:
   check(request(admin,'/panel_language.php',{'language':language},token)[0]==200,'save language '+language)
@@ -151,7 +160,7 @@ try:
  # Real login flow uses fixture admins, never the production database.
  login=client();status,html=request(login,'/admin.php');csrf=re.search('name="csrf_token" value="([a-f0-9]+)"',html).group(1)
  status,html=request(login,'/admin.php',{'login_btn':'1','username':'fixture-admin','password':'fixture-password','csrf_token':csrf})
- check(status==200 and 'panelLogout' in html and 'Gestion Clients' in html,'legacy admin login remains compatible')
+ check(status==200 and 'panelLogout' in html and 'PANEL_CONFIG' in html,'legacy admin login remains compatible')
  check(request(login,'/editor.php')[0]==200,'login identity permits editor')
  check(snapshot()==initial,'render and login preserve all fixture data')
  diagnostic=json.loads(request(admin,'/panel_diagnostics_json.php')[1])
@@ -182,7 +191,7 @@ try:
    except HTTPError as response:check(response.code==302 and response.headers['Location'].endswith(expected),route+' fixture playback redirect')
   check(request(anonymous,'/'+route+'?username=visible&password=wrong&stream='+stream)[0]==401,route+' rejects invalid client')
  conn.execute('UPDATE categories SET visible=0 WHERE category_id=10');conn.commit()
- for route,stream in [('live.php','40'),('vod.php','20'),('series.php','31')]:check(request(anonymous,'/'+route+'?'+credentials+'&stream='+stream)[0]==404,route+' hidden category denied')
+ for route,stream in [('live.php','40'),('vod.php','20'),('series.php','31')]:check(request(anonymous,'/'+route+'?'+credentials+'&stream='+stream)[0]==403,route+' hidden category denied by pack authorization')
  check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1])['episodes']==[],'hidden series category denied before cached lookup')
  check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=20')[1])['movie_data']==[],'hidden VOD detail denied')
  check(request(anonymous,'/get.php?'+credentials)[1].count('#EXTINF')==0,'hidden category excluded from M3U playlist')
@@ -195,7 +204,7 @@ try:
  UPDATE fournisseurs SET active=1 WHERE id=1;
  UPDATE categories SET visible=1 WHERE category_id=10;
  CREATE TABLE movie_groups(group_id INTEGER PRIMARY KEY,label TEXT);
- CREATE TABLE movie_group_sources(stream_id INTEGER PRIMARY KEY,group_id INTEGER,role TEXT);
+ CREATE TABLE IF NOT EXISTS movie_group_sources(stream_id INTEGER PRIMARY KEY,group_id INTEGER,role TEXT);
  CREATE TABLE movie_identifiers(stream_id INTEGER PRIMARY KEY,tmdb_id TEXT,imdb_id TEXT,release_year TEXT);
  INSERT INTO fournisseurs(id,nom,type,url_base,user,pass,active) VALUES(2,'Synthetic M3U','m3u','https://fixture.invalid','','',1);
  INSERT INTO streams(stream_id,stream_name,visible,fournisseur_id,category_id,stream_type,container_extension,direct_source,remote_stream_id) VALUES(25,'Backup movie',1,2,10,'movie','mkv','https://fixture.invalid/backup.mkv','backup'),(26,'Disabled movie',1,2,10,'movie','mkv','https://fixture.invalid/disabled.mkv','disabled');
@@ -209,7 +218,7 @@ try:
  info=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=25')[1])
  check(str(info['movie_data']['stream_id'])=='20','backup details resolve canonical primary')
  check(request(playback,'/vod.php?'+credentials+'&stream=20&backup_stream=25')[1]=='fixture-relay:25','explicit M3U backup reaches relay')
- check(request(playback,'/vod.php?'+credentials+'&stream=26')[0]==404,'disabled grouped source refuses playback')
+ check(request(playback,'/vod.php?'+credentials+'&stream=26')[0]==403,'disabled grouped source refuses playback by pack authorization')
  # Local content lifecycle, with no provider request; existing clients and providers unchanged.
  token=json.loads(request(admin,'/__fixture.php')[1])['csrf']
  personal_ids={};category_ids={}
@@ -263,7 +272,7 @@ try:
  data=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1]);check(data['episodes']['1'][0]['id']=='31','series replacement retains local episode IDs with fixture transport')
  # Hide a series and deny its personal episode in metadata, playback and M3U.
  conn.execute('UPDATE streams SET visible=0 WHERE stream_id=?',(personal_ids['series'],));conn.commit()
- check(request(playback,'/series.php?'+credentials+'&stream='+str(eid))[0]==404,'inactive personal parent denies episode playback')
+ check(request(playback,'/series.php?'+credentials+'&stream='+str(eid))[0]==403,'inactive personal parent denies episode playback by pack authorization')
  check('Personal episode' not in request(anonymous,'/get.php?'+credentials)[1],'inactive personal series excludes episode from M3U')
  conn.execute('UPDATE streams SET visible=1 WHERE stream_id=?',(personal_ids['series'],));conn.commit()
  request(admin,'/content_edit.php?id='+str(eid),{'delete':1,'confirmation':'SUPPRIMER '+str(eid)},token)

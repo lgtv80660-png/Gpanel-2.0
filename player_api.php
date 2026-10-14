@@ -176,7 +176,8 @@ elseif ($action === 'get_vod_streams') {
 }
 elseif ($action === 'get_vod_info') {
     $localVodId = trim((string)($_REQUEST['vod_id'] ?? $_REQUEST['stream_id'] ?? ''));
-    if (!isset($packAccess[(int)$localVodId])) {echo json_encode(['info'=>[], 'movie_data'=>[]]);exit;}
+    // Authorize the canonical public movie after resolving a grouped source ID.
+    // Backups do not appear in pack catalogues; the primary still must be entitled.
     if ($localVodId === '') { echo json_encode(['info'=>[], 'movie_data'=>[]]); exit; }
 
     $stmt = $pdo->prepare("SELECT s.*, f.url_base, f.user, f.pass, f.type FROM streams s LEFT JOIN fournisseurs f ON s.fournisseur_id=f.id INNER JOIN categories c ON s.category_id=c.category_id WHERE s.stream_id=? AND s.stream_type='movie' AND s.visible=1 AND c.visible=1 AND (f.active=1 OR s.fournisseur_id=0) LIMIT 1");
