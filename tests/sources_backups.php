@@ -1,0 +1,57 @@
+<?php
+require __DIR__.'/../panel_sources.php';
+$checks=0;
+function check_sb(bool $ok,string $message): void {global $checks;$checks++;if(!$ok)throw new RuntimeException($message);}
+function rejects_sb(callable $fn,string $label): void {try{$fn();}catch(Throwable $e){check_sb(true,$label);return;}check_sb(false,$label);}
+$pdo=new PDO('sqlite::memory:');$pdo->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
+$pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE,PDO::FETCH_ASSOC);
+$pdo->exec('CREATE TABLE fournisseurs(id INTEGER PRIMARY KEY,nom TEXT,type TEXT,active INT,url_base TEXT,user TEXT,pass TEXT);CREATE TABLE categories(category_id INT PRIMARY KEY,visible INT);CREATE TABLE streams(stream_id INT PRIMARY KEY,fournisseur_id INT,stream_type TEXT,stream_name TEXT,direct_source TEXT,container_extension TEXT,visible INT,category_id INT);CREATE TABLE content_settings(stream_id INT PRIMARY KEY,source_override TEXT,source_provider INT,source_remote TEXT)');
+check_sb(!sources_ready($pdo),'missing migration detected');
+// Run actual additive DDL, translating only MySQL dialect to SQLite.
+$sql=file_get_contents(__DIR__.'/../sources.sql');$sql=preg_replace('/CHARACTER SET ascii COLLATE ascii_bin/','',$sql);$sql=str_replace('ENGINE=InnoDB','',$sql);$sql=preg_replace('/UNIQUE KEY \w+ /','UNIQUE ',$sql);$pdo->exec($sql);$pdo->exec('INSERT INTO source_policy_version VALUES(1,1)');
+$pdo->exec("INSERT INTO fournisseurs VALUES(1,'First','xtream',1,'https://one.example','private-user','private-pass'),(2,'Second','xtream',1,'https://two.example','secret','secret'),(3,'Third','xtream',1,'https://three.example','u','p');INSERT INTO categories VALUES(33,1);INSERT INTO streams VALUES(10,1,'live','FR: Canal 1 HD','100','m3u8',1,33),(20,2,'live','FR Canal 1 FHD','200','m3u8',1,33),(30,3,'live','FR Canal 1 SD','300','ts',1,33),(40,2,'live','UK Canal 1 HD','400','ts',1,33),(50,2,'movie','FR Canal 1 HD','500','mp4',1,33)");
+check_sb(sources_ready($pdo),'migration ready');
+check_sb((int)$pdo->query('SELECT COUNT(*) FROM source_host_roles')->fetchColumn()===0,'imported hosts are neutral by absence');
+check_sb(sources_plan($pdo,10)['sources']===[],'no implicit primary');
+$c=sources_candidates($pdo,sources_row($pdo,10));check_sb(array_column($c,'stream_id')===[20,30],'normalization matches qualities, preserves language and type');
+check_sb(sources_name('Canal 1 +1 HD')['name']!==sources_name('Canal 1 HD')['name'],'timeshift not collapsed');
+$hosts=[1=>['live'=>['role'=>'primary'],'movie'=>['role'=>'backup','order'=>1]],2=>['live'=>['role'=>'backup','order'=>1],'series'=>['role'=>'primary']],3=>['live'=>['role'=>'backup','order'=>2]]];
+sources_save_hosts($pdo,$hosts,1);$plan=sources_plan($pdo,10);
+check_sb(count($plan['sources'])===3 && str_contains($plan['sources'][0]['url'],'one.example'),'ordered global chain');
+check_sb($pdo->query("SELECT role FROM source_host_roles WHERE fournisseur_id=1 AND kind='series'")->fetchColumn()==='neutral','roles independent');
+rejects_sb(fn()=>sources_save_hosts($pdo,$hosts,1),'stale global revision');
+$bad=$hosts;$bad[2]['live']=['role'=>'primary'];rejects_sb(fn()=>sources_save_hosts($pdo,$bad,2),'two primaries rejected');
+$bad=$hosts;$bad[3]['live']['order']=1;rejects_sb(fn()=>sources_save_hosts($pdo,$bad,2),'duplicate backup order rejected');
+check_sb(count(sources_plan($pdo,10)['sources'])===3,'failed host update rolls back');
+rejects_sb(fn()=>$pdo->exec("INSERT INTO source_host_roles VALUES(999,'live','primary',NULL,1)"),'database unique primary');
+rejects_sb(fn()=>$pdo->exec("INSERT INTO source_host_roles VALUES(999,'live','backup',0,NULL)"),'database positive order constraint');
+rejects_sb(fn()=>$pdo->exec("INSERT INTO source_host_roles VALUES(999,'live','primary',NULL,NULL)"),'database primary slot cannot be null');
+rejects_sb(fn()=>$pdo->exec("INSERT INTO source_host_roles VALUES(999,'live','backup',NULL,NULL)"),'database backup order cannot be null');
+$dns=fn($h)=>['93.184.216.34'];
+$post=['mode'=>'custom','revision'=>0,'links'=>[['candidate'=>30],['candidate'=>20],['candidate'=>0,'url'=>'https://manual.example/live.m3u8']]];
+sources_save_channel($pdo,10,$post,$dns);$custom=sources_plan($pdo,10);
+check_sb(count($custom['sources'])===3 && str_contains($custom['sources'][0]['url'],'three.example'),'channel overrides global order');
+check_sb((int)$pdo->query('SELECT COUNT(*) FROM streams')->fetchColumn()===5 && $pdo->query('SELECT direct_source FROM streams WHERE stream_id=10')->fetchColumn()==='100','canonical ID and catalogue untouched');
+rejects_sb(fn()=>sources_save_channel($pdo,10,$post,$dns),'stale channel revision');
+$duplicate=$post;$duplicate['revision']=1;$duplicate['links'][]=['candidate'=>30];rejects_sb(fn()=>sources_save_channel($pdo,10,$duplicate,$dns),'duplicate source rejected');
+rejects_sb(fn()=>sources_save_channel($pdo,50,$post,$dns),'VOD untouched');
+check_sb(count(sources_plan($pdo,10)['sources'])===3,'failed channel save preserves links');
+$pdo->exec("INSERT INTO streams VALUES(21,2,'live','FR Canal 1 4K','201','ts',1,33)");
+sources_save_channel($pdo,10,['mode'=>'inherit','revision'=>1]);$ambiguous=sources_plan($pdo,10);
+check_sb(count($ambiguous['sources'])===2 && count($ambiguous['warnings'])===1,'ambiguous host skipped until human choice');
+$pdo->exec('UPDATE fournisseurs SET active=0 WHERE id=1');
+check_sb(sources_plan($pdo,20)['sources']===[],'inactive global primary fails closed');$pdo->exec('UPDATE fournisseurs SET active=1 WHERE id=1');
+$state=sources_failover($custom,[],'start',100);check_sb($state['index']===0,'starts primary');
+$state=sources_failover($custom,$state,'timeout',100);check_sb($state['index']===1 && $state['generation']===1 && $state['status']==='reopen','real failure requires new session');
+$same=sources_failover($custom,$state,'segment_error',101);check_sb($same===$state,'cooldown prevents rapid loops');
+$state=sources_failover($custom,$state,'ok',103);check_sb($state['status']==='playing','transport recovery');
+$state=sources_failover($custom,$state,'client_black_screen',104);check_sb($state['index']===2,'explicit client failure advances despite HTTP 200');
+$state=sources_failover($custom,$state,'http_error',107);check_sb($state['status']==='exhausted','no loop back to failed primary');
+check_sb(sources_failover($custom,$state,'start',999)['status']==='exhausted','exhausted session requires explicit new session');
+rejects_sb(fn()=>sources_failover($custom,[],'black_screen_detected_by_panel',1),'no invented panel video detection');
+foreach(['http://127.0.0.1/x','http://10.0.0.1/x','http://169.254.169.254/x','http://100.64.0.1/x','http://224.0.0.1/x','http://[::1]/x','http://[::ffff:127.0.0.1]/x','file:///etc/passwd','https://u:p@example.com/x','https://example.com:8080/x','https://localhost/x','https://2130706433/x','https://example.com/%0aX','https://example.com/x#x'] as $url)rejects_sb(fn()=>sources_url($url,$dns),'SSRF '.$url);
+rejects_sb(fn()=>sources_url('https://mixed.example/x',fn($h)=>['93.184.216.34','10.0.0.2']),'mixed DNS refused');
+rejects_sb(fn()=>sources_url('https://rebind.example/x',fn($h)=>[]),'DNS failure refused');
+check_sb(sources_url('https://public.example/x?token=private',$dns)['ips']===['93.184.216.34'],'public DNS pin target');
+check_sb(!str_contains(sources_redact('https://host.example/live/user/password/id?token=private'),'private') && !str_contains(sources_redact('https://host.example/live/user/password/id'),'password'),'admin display redacts credentials');
+echo "$checks Sources & Backups checks passed\n";
