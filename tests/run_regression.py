@@ -8,13 +8,13 @@ from urllib.error import HTTPError, URLError
 
 ap=argparse.ArgumentParser();ap.add_argument('--php',required=True);ap.add_argument('--ext',required=True);ap.add_argument('--port',type=int,default=18976);ap.add_argument('--keep',action='store_true');ap.add_argument('--ui',action='store_true');ap.add_argument('--selective',action='store_true');args=ap.parse_args()
 source=Path(__file__).resolve().parents[1]
-tmp=Path(tempfile.mkdtemp(prefix='panel-regression-'));web=tmp/'web';web.mkdir();state=tmp/'state';state.mkdir()
+tmp=Path(tempfile.mkdtemp(prefix='panel-regression-'));web=tmp/'web';web.mkdir();state=tmp/'state';state.mkdir();sessions=tmp/'sessions';sessions.mkdir()
 for f in source.glob('*.php'):shutil.copy2(f,web/f.name)
 shutil.copytree(source/'assets',web/'assets')
 # Authentication/catalogue regression isolates transport; actual relay is tested separately.
-(web/'panel_vod_relay.php').write_text((source/'panel_vod_relay.php').read_text().split('function vod_relay(')[0] + '''function vod_relay(array $rows, string $extension, string $method, string $range = ''): void {
- echo 'fixture-relay:'.$rows[0]['stream_id'];
-}''', encoding='utf-8')
+(web/'panel_vod_relay.php').write_text((source/'panel_vod_relay.php').read_text().split('function vod_stream_rows(')[0] + """function vod_stream_rows(array $rows,string $extension,string $method,string $range,array &$state,?callable $transport=null,?callable $dns=null,?callable $emit=null): array {
+ echo 'fixture-relay:'.$rows[0]['stream_id'];return ['status'=>200,'started'=>true,'ok'=>true];
+}""", encoding='utf-8')
 # Replace the provider transport only in the disposable copy; no provider request is made.
 importer=(web/'importer.php').read_text(encoding='utf-8')
 importer=re.sub(r'function fetch_data_stream\([^\n]*\) \{.*?\n\}', '''function fetch_data_stream($url, $headers = []) {
@@ -40,6 +40,15 @@ CREATE TABLE content_settings(stream_id INTEGER PRIMARY KEY,quality TEXT,quality
 CREATE TABLE admins(id INTEGER PRIMARY KEY,username TEXT,password TEXT);
 CREATE TABLE import_exclusions(fournisseur_id INTEGER,content_type TEXT,remote_stream_id TEXT,PRIMARY KEY(fournisseur_id,content_type,remote_stream_id));
 INSERT INTO admins VALUES(1,'fixture-admin','fixture-password'),(2,'fixture-restricted','fixture-password');
+CREATE TABLE panel_admin_roles(admin_id INT,role TEXT,enabled INT);INSERT INTO panel_admin_roles VALUES(1,'admin',1),(2,'viewer',1);
+CREATE TABLE movie_groups(group_id INTEGER PRIMARY KEY,label TEXT);
+CREATE TABLE movie_group_sources(stream_id INTEGER PRIMARY KEY,group_id INTEGER,role TEXT);
+CREATE TABLE movie_identifiers(stream_id INTEGER PRIMARY KEY,tmdb_id TEXT,imdb_id TEXT,release_year TEXT);
+CREATE TABLE packs(id INT PRIMARY KEY,name TEXT,level TEXT,active INT,updated_at TEXT);
+CREATE TABLE pack_rules(pack_id INT,scope TEXT,kind TEXT,reference_id INT);
+CREATE TABLE client_packs(client_id INT,pack_id INT,expires_at TEXT);
+INSERT INTO packs VALUES(1,'Fixture','BASIC',1,'2026-10-16');INSERT INTO client_packs VALUES(1,1,NULL);
+INSERT INTO pack_rules VALUES(1,'live','all',0),(1,'movie','all',0),(1,'series','all',0),(1,'personal','all',0);
 CREATE TABLE clients(id INTEGER PRIMARY KEY,username TEXT,password TEXT,active INTEGER DEFAULT 1);
 INSERT INTO clients VALUES(1,'Visible','fixture-client',1);
 CREATE TABLE fournisseurs(id INTEGER PRIMARY KEY,nom TEXT,type TEXT,url_base TEXT,user TEXT,pass TEXT,mac_address TEXT,proxy TEXT,active INTEGER DEFAULT 1);
@@ -64,9 +73,9 @@ $_SESSION['panel_language']=panel_load_language($_SESSION['panel_admin_id']);
 $_SESSION['panel_last_seen']=isset($_GET['expired'])?time()-1801:time();
 echo json_encode(['csrf'=>$_SESSION['panel_csrf'],'lang'=>panel_language()]);
 """,encoding='utf-8')
-env=os.environ.copy();env.update(PANEL_COOKIE_SECURE='0',PANEL_STATE_DIR=str(state),FIXTURE_DB=str(db),FIXTURE_DB_TOUCH=str(tmp/'db-touch'),PANEL_ADMIN_PERMISSIONS=json.dumps({'1':['panel:read','panel:manage','catalog:edit','catalog:import','cache:revalidate'],'2':['panel:read']}),PANEL_REVALIDATE_URL='',PANEL_REVALIDATE_SECRET='')
+env=os.environ.copy();env.update(PANEL_COOKIE_SECURE='0',PANEL_STATE_DIR=str(state),PANEL_SOURCES_STATE_DIR=str(sessions),FIXTURE_DB=str(db),FIXTURE_DB_TOUCH=str(tmp/'db-touch'),PANEL_ADMIN_PERMISSIONS=json.dumps({'1':['panel:read','panel:manage','catalog:edit','catalog:import','cache:revalidate'],'2':['panel:read']}),PANEL_REVALIDATE_URL='',PANEL_REVALIDATE_SECRET='')
 env.update(FIXTURE_UPSTREAM_COUNT=str(tmp/'upstream-count'),FIXTURE_UPSTREAM_JSON=str(tmp/'upstream.json'))
-(tmp/'upstream.json').write_text(json.dumps({'episodes':{'1':[{'id':'ep-visible','title':'Remote title','container_extension':'mp4'},{'id':'ep-hidden','title':'Hidden remote'},{'id':'ep-new','title':'New episode','container_extension':'mkv'}]},'info':{'name':'Remote series','cover':'Remote cover','plot':'Remote plot'},'seasons':[]}),encoding='utf-8')
+(tmp/'upstream.json').write_text(json.dumps({'episodes':{'1':[{'id':'ep-visible','title':'Remote title','container_extension':'mp4','season':1,'episode_num':1},{'id':'ep-hidden','title':'Hidden remote','season':1,'episode_num':2},{'id':'ep-new','title':'New episode','container_extension':'mkv','season':1,'episode_num':3}]},'info':{'name':'Remote series','cover':'Remote cover','plot':'Remote plot'},'seasons':[]}),encoding='utf-8')
 php=[str(Path(args.php).resolve()),'-n','-d','extension_dir='+str(Path(args.ext).resolve()),'-d','extension=pdo_sqlite','-d','extension=mbstring']
 base=f'http://127.0.0.1:{args.port}'
 log=(tmp/'server.log').open('wb');server=subprocess.Popen(php+['-S',f'127.0.0.1:{args.port}','-t',str(web)],env=env,stdout=log,stderr=log)
@@ -81,6 +90,13 @@ def request(c,path,body=None,csrf=None):
   r=c.open(Request(base+path,data=data,headers=headers),timeout=5)
   return r.status,r.read().decode()
  except HTTPError as e:return e.code,e.read().decode()
+def playback_result(c,path):
+ try:
+  r=c.open(Request(base+path),timeout=5);return r.status,r.read().decode()
+ except HTTPError as e:
+  if e.code==307:return request(c,e.headers['Location'])
+  return e.code,e.read().decode()
+
 def check(condition,name):
  assert condition,name
  print('PASS '+name,flush=True)
@@ -101,7 +117,7 @@ try:
  for route in ['content_edit.php','personal_content.php','editor.php','importer.php','import_selective.php','revalidate_proxy.php','panel_language.php','admin.php']:
   for bad in [None,'wrong']:
    check(request(admin,'/'+route,{'ajax_action':'toggle_stream','id':'20'},bad)[0]==403,route+' invalid CSRF denied')
- check(not (tmp/'db-touch').exists(),'invalid permissions and CSRF denied before database access')
+ check(snapshot()==initial,'permission lookups and invalid CSRF preserve application data')
  check(snapshot()==initial,'negative requests preserve catalogue and clients')
  for language in ['en','ar','fr']:
   check(request(admin,'/panel_language.php',{'language':language},token)[0]==200,'save language '+language)
@@ -151,7 +167,7 @@ try:
  # Real login flow uses fixture admins, never the production database.
  login=client();status,html=request(login,'/admin.php');csrf=re.search('name="csrf_token" value="([a-f0-9]+)"',html).group(1)
  status,html=request(login,'/admin.php',{'login_btn':'1','username':'fixture-admin','password':'fixture-password','csrf_token':csrf})
- check(status==200 and 'panelLogout' in html and 'Gestion Clients' in html,'legacy admin login remains compatible')
+ check(status==200 and 'panelLogout' in html and 'name="login_btn"' not in html,'legacy admin login remains compatible')
  check(request(login,'/editor.php')[0]==200,'login identity permits editor')
  check(snapshot()==initial,'render and login preserve all fixture data')
  diagnostic=json.loads(request(admin,'/panel_diagnostics_json.php')[1])
@@ -168,6 +184,11 @@ try:
  check(data['episodes']['1'][0]['id']=='31' and data['episodes']['1'][0]['title']=='Custom episode' and data['episodes']['1'][0]['container_extension']=='mkv','episode ID, title and format preserved')
  check(data['info']['name']=='Custom series' and data['info']['cover']=='Custom cover','series custom name and icon win')
  check(conn.execute('SELECT vod_plot FROM streams WHERE stream_id=30').fetchone()[0]=='Custom plot','series custom metadata preserved')
+ check(conn.execute('SELECT series_parent,season_number,episode_number FROM content_settings WHERE stream_id=31').fetchone()==(30,1,1),'import persists parent season and episode without changing public ID')
+ conn.execute('UPDATE content_settings SET season_number=0,episode_number=9 WHERE stream_id=31');conn.commit()
+ corrected=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1])
+ check(corrected['episodes']['0'][0]['id']=='31' and corrected['episodes']['0'][0]['episode_num']==9,'persisted episode numbering survives cached metadata refresh and public grouping')
+ conn.execute('UPDATE content_settings SET season_number=1,episode_number=1 WHERE stream_id=31');conn.commit()
  request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')
  check((tmp/'upstream-count').read_text()=='x','second series request uses cache')
  check(conn.execute("SELECT COUNT(*) FROM streams WHERE direct_source='ep-new'").fetchone()[0]==1,'cached series request does not duplicate episode')
@@ -176,13 +197,13 @@ try:
   def redirect_request(self,*args,**kwargs):return None
  playback=build_opener(NoRedirect())
  for route,stream,expected in [('live.php','40','live/fixture/fixture/live-remote.ts'),('vod.php','20','movie/fixture/fixture/remote-20.mp4'),('series.php','31','series/fixture/fixture/ep-visible.mkv')]:
-  if route=='vod.php':check(request(playback,'/'+route+'?'+credentials+'&stream='+stream)[1]=='fixture-relay:20','legacy VOD route reaches authenticated relay')
+  if route=='vod.php':check(playback_result(playback,'/'+route+'?'+credentials+'&stream='+stream)[1]=='fixture-relay:20','legacy VOD route reaches authenticated relay')
   else:
    try:playback.open(base+'/'+route+'?'+credentials+'&stream='+stream)
-   except HTTPError as response:check(response.code==302 and response.headers['Location'].endswith(expected),route+' fixture playback redirect')
+   except HTTPError as response:check((response.code==302 and response.headers['Location'].endswith(expected)) if route=='live.php' else (response.code==307 and response.headers['Location'].startswith('/vod_source_media.php?s=')),route+' fixture playback redirect')
   check(request(anonymous,'/'+route+'?username=visible&password=wrong&stream='+stream)[0]==401,route+' rejects invalid client')
  conn.execute('UPDATE categories SET visible=0 WHERE category_id=10');conn.commit()
- for route,stream in [('live.php','40'),('vod.php','20'),('series.php','31')]:check(request(anonymous,'/'+route+'?'+credentials+'&stream='+stream)[0]==404,route+' hidden category denied')
+ for route,stream in [('live.php','40'),('vod.php','20'),('series.php','31')]:check(request(anonymous,'/'+route+'?'+credentials+'&stream='+stream)[0]==403,route+' hidden category denied')
  check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1])['episodes']==[],'hidden series category denied before cached lookup')
  check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=20')[1])['movie_data']==[],'hidden VOD detail denied')
  check(request(anonymous,'/get.php?'+credentials)[1].count('#EXTINF')==0,'hidden category excluded from M3U playlist')
@@ -194,9 +215,9 @@ try:
  conn.executescript("""
  UPDATE fournisseurs SET active=1 WHERE id=1;
  UPDATE categories SET visible=1 WHERE category_id=10;
- CREATE TABLE movie_groups(group_id INTEGER PRIMARY KEY,label TEXT);
- CREATE TABLE movie_group_sources(stream_id INTEGER PRIMARY KEY,group_id INTEGER,role TEXT);
- CREATE TABLE movie_identifiers(stream_id INTEGER PRIMARY KEY,tmdb_id TEXT,imdb_id TEXT,release_year TEXT);
+ CREATE TABLE IF NOT EXISTS movie_groups(group_id INTEGER PRIMARY KEY,label TEXT);
+ CREATE TABLE IF NOT EXISTS movie_group_sources(stream_id INTEGER PRIMARY KEY,group_id INTEGER,role TEXT);
+ CREATE TABLE IF NOT EXISTS movie_identifiers(stream_id INTEGER PRIMARY KEY,tmdb_id TEXT,imdb_id TEXT,release_year TEXT);
  INSERT INTO fournisseurs(id,nom,type,url_base,user,pass,active) VALUES(2,'Synthetic M3U','m3u','https://fixture.invalid','','',1);
  INSERT INTO streams(stream_id,stream_name,visible,fournisseur_id,category_id,stream_type,container_extension,direct_source,remote_stream_id) VALUES(25,'Backup movie',1,2,10,'movie','mkv','https://fixture.invalid/backup.mkv','backup'),(26,'Disabled movie',1,2,10,'movie','mkv','https://fixture.invalid/disabled.mkv','disabled');
  INSERT INTO movie_groups VALUES(1,'Confirmed synthetic movie');
@@ -206,10 +227,11 @@ try:
  check([str(row['stream_id']) for row in cards]==['20'],'confirmed Xtream/M3U group has one VOD card')
  playlist=request(anonymous,'/get.php?'+credentials)[1]
  check('/25.' not in playlist and '/26.' not in playlist,'M3U excludes backup and disabled duplicate cards')
- info=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=25')[1])
- check(str(info['movie_data']['stream_id'])=='20','backup details resolve canonical primary')
- check(request(playback,'/vod.php?'+credentials+'&stream=20&backup_stream=25')[1]=='fixture-relay:25','explicit M3U backup reaches relay')
- check(request(playback,'/vod.php?'+credentials+'&stream=26')[0]==404,'disabled grouped source refuses playback')
+ info=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=20')[1])
+ check(str(info['movie_data']['stream_id'])=='20','confirmed group public primary details retain canonical ID')
+ check(json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_vod_info&vod_id=25')[1])['movie_data']==[],'hidden backup detail cannot bypass current pack gate')
+ check(playback_result(playback,'/vod.php?'+credentials+'&stream=20&backup_stream=25')[1]=='fixture-relay:25','explicit M3U backup reaches relay')
+ check(playback_result(playback,'/vod.php?'+credentials+'&stream=26')[0]==403,'disabled grouped source refuses playback')
  # Local content lifecycle, with no provider request; existing clients and providers unchanged.
  token=json.loads(request(admin,'/__fixture.php')[1])['csrf']
  personal_ids={};category_ids={}
@@ -229,8 +251,8 @@ try:
  data=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id='+str(personal_ids['series']))[1]);check(int(data['episodes']['2'][0]['id'])==eid and data['episodes']['2'][0]['episode_num']==3,'personal series and episode metadata with local IDs')
  check((tmp/'upstream-count').read_text()==count_before,'personal catalogue never fetches provider')
  check('Personal live' in request(anonymous,'/get.php?'+credentials)[1] and 'Personal episode' in request(anonymous,'/get.php?'+credentials)[1],'personal M3U live movie episode publication')
- for route,sid in [('live.php',personal_ids['live']),('series.php',eid)]:check(request(playback,'/'+route+'?'+credentials+'&stream='+str(sid))[0]==302,'personal URL playback '+route)
- check(request(playback,'/vod.php?'+credentials+'&stream='+str(personal_ids['movie']))[1]=='fixture-relay:'+str(personal_ids['movie']),'personal movie uses existing authenticated relay')
+ for route,sid in [('live.php',personal_ids['live']),('series.php',eid)]:check(playback_result(playback,'/'+route+'?'+credentials+'&stream='+str(sid))[0]==(302 if route=='live.php' else 200),'personal URL playback '+route)
+ check(playback_result(playback,'/vod.php?'+credentials+'&stream='+str(personal_ids['movie']))[1]=='fixture-relay:'+str(personal_ids['movie']),'personal movie uses existing authenticated relay')
  request(admin,'/personal_content.php',{'op':'delete_category','id':category_ids['live'],'confirmation':'SUPPRIMER '+str(category_ids['live'])},token)
  check(conn.execute('SELECT COUNT(*) FROM categories WHERE category_id=?',(category_ids['live'],)).fetchone()[0]==1,'nonempty personal category cannot be deleted')
  request(admin,'/content_edit.php?id='+str(personal_ids['live']),{'delete':1,'confirmation':'wrong'},token)
@@ -238,7 +260,7 @@ try:
  # Replacement and quality correction stay independent of the importer refresh.
  request(admin,'/content_edit.php?id=20',{'name':'Local title','category':10,'source':'https://fixture.invalid/replacement.mp4','icon':'','extension':'mkv','quality':'4K','visible':1,'plot':'Local plot'},token)
  check(conn.execute('SELECT quality,source_override FROM content_settings WHERE stream_id=20').fetchone()==('4K','https://fixture.invalid/replacement.mp4'),'manual quality and replacement saved separately')
- check(request(playback,'/vod.php?'+credentials+'&stream=20')[1]=='fixture-relay:20','replacement retains existing playback ID')
+ check(playback_result(playback,'/vod.php?'+credentials+'&stream=20')[1]=='fixture-relay:20','replacement retains existing playback ID')
  php_script=tmp/'reimport.php';php_script.write_text("<?php require "+repr(str(web/'config.php').replace('\\','/'))+"; require "+repr(str(web/'panel_import.php').replace('\\','/'))+"; process_and_insert_streams($pdo,1,'movie','xtream',[['stream_id'=>'remote-20','name'=>'Provider rename','category_id'=>'remote-10','height'=>1080]],['remote-10'=>10]);",encoding='utf-8')
  subprocess.run(php+[str(php_script)],env=env,check=True,capture_output=True)
  check(conn.execute('SELECT stream_name,vod_plot FROM streams WHERE stream_id=20').fetchone()==('Local title','Local plot') and conn.execute('SELECT quality,source_override FROM content_settings WHERE stream_id=20').fetchone()==('4K','https://fixture.invalid/replacement.mp4'),'reimport retains customization manual quality source override')
@@ -263,7 +285,7 @@ try:
  data=json.loads(request(anonymous,'/player_api.php?'+credentials+'&action=get_series_info&series_id=30')[1]);check(data['episodes']['1'][0]['id']=='31','series replacement retains local episode IDs with fixture transport')
  # Hide a series and deny its personal episode in metadata, playback and M3U.
  conn.execute('UPDATE streams SET visible=0 WHERE stream_id=?',(personal_ids['series'],));conn.commit()
- check(request(playback,'/series.php?'+credentials+'&stream='+str(eid))[0]==404,'inactive personal parent denies episode playback')
+ check(playback_result(playback,'/series.php?'+credentials+'&stream='+str(eid))[0]==403,'inactive personal parent denies episode playback')
  check('Personal episode' not in request(anonymous,'/get.php?'+credentials)[1],'inactive personal series excludes episode from M3U')
  conn.execute('UPDATE streams SET visible=1 WHERE stream_id=?',(personal_ids['series'],));conn.commit()
  request(admin,'/content_edit.php?id='+str(eid),{'delete':1,'confirmation':'SUPPRIMER '+str(eid)},token)

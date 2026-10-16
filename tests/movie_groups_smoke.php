@@ -2,6 +2,7 @@
 require __DIR__.'/../panel_movie_groups.php';
 $p=new PDO('sqlite::memory:'); $p->setAttribute(PDO::ATTR_ERRMODE,PDO::ERRMODE_EXCEPTION);
 $p->exec("CREATE TABLE streams(stream_id INTEGER PRIMARY KEY,stream_name TEXT,fournisseur_id INT,stream_type TEXT,category_id INT,visible INT); CREATE TABLE categories(category_id INT,visible INT); CREATE TABLE fournisseurs(id INT,active INT,type TEXT,url_base TEXT,user TEXT,pass TEXT); CREATE TABLE movie_groups(group_id INTEGER PRIMARY KEY AUTOINCREMENT,label TEXT); CREATE TABLE movie_group_sources(stream_id INTEGER PRIMARY KEY,group_id INT,role TEXT); CREATE TABLE movie_identifiers(stream_id INTEGER PRIMARY KEY,tmdb_id TEXT,imdb_id TEXT,release_year TEXT); INSERT INTO categories VALUES(1,1); INSERT INTO fournisseurs VALUES(1,1,'xtream','http://fixture','',''),(2,1,'xtream','http://fixture','',''); INSERT INTO streams VALUES(1,'Movie',1,'movie',1,1),(2,'Movie',2,'movie',1,1),(3,'Movie',2,'movie',1,1);");
+$p->exec('CREATE TABLE content_settings(stream_id INTEGER PRIMARY KEY,source_override TEXT,source_provider INT,source_remote TEXT);ALTER TABLE fournisseurs ADD COLUMN nom TEXT;');
 function check($ok) { if(!$ok) throw new RuntimeException('Fixture failed'); }
 movie_confirm($p,[1=>'primary',2=>'backup',3=>'disabled']);
 check(movie_catalog_visible($p,1));

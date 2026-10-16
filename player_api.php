@@ -418,7 +418,21 @@ elseif ($action === 'get_series_info') {
                 $existingEpisodes[$remote_ep_id] = ['stream_id'=>$local_ep_id, 'stream_name'=>$ep_title, 'stream_icon'=>$ep_icon, 'container_extension'=>$ep_ext, 'visible'=>1, 'category_visible'=>1];
             }
 
+            // Preserve the public episode's parent; provider IDs are not cross-host identities.
+            $episodeSettings=content_settings($pdo,$local_ep_id);
+            if(!empty($episodeSettings['series_parent']) && (int)$episodeSettings['series_parent']!==(int)$local_series_id){unset($episodes_list[$ep_index]);continue;}
             content_setting($pdo,$local_ep_id,'series_parent',(int)$local_series_id);
+            $seasonValue=$ep['season']??$season_key;
+            $episodeValue=$ep['episode_num']??$ep['episode_number']??null;
+            $validSeason=filter_var($seasonValue,FILTER_VALIDATE_INT,['options'=>['min_range'=>0]]);
+            $validEpisode=filter_var($episodeValue,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+            if(isset($ep['season']) && ctype_digit((string)$season_key) && (int)$ep['season']!==(int)$season_key)$validSeason=false;
+            if($validSeason!==false && $validSeason!==null && !isset($episodeSettings['season_number']))content_setting($pdo,$local_ep_id,'season_number',$validSeason);
+            if($validEpisode!==false && $validEpisode!==null && !isset($episodeSettings['episode_number']))content_setting($pdo,$local_ep_id,'episode_number',$validEpisode);
+            if(isset($episodeSettings['season_number']))$ep['season']=(int)$episodeSettings['season_number'];
+            elseif($validSeason!==false && $validSeason!==null)$ep['season']=$validSeason;
+            if(isset($episodeSettings['episode_number']))$ep['episode_num']=(int)$episodeSettings['episode_number'];
+            elseif($validEpisode!==false && $validEpisode!==null)$ep['episode_num']=$validEpisode;
             $ep['id'] = (string)$local_ep_id;
             $ep['stream_id'] = (string)$local_ep_id;
             $ep['container_extension'] = $ep_ext;
@@ -434,6 +448,14 @@ elseif ($action === 'get_series_info') {
         $episodes_list = array_values($episodes_list);
     }
     unset($episodes_list);
+
+    // Keep the public grouping consistent with the persisted episode identity.
+    $canonicalEpisodes=[];
+    foreach($data['episodes'] as $seasonKey=>$episodeList){if(!is_array($episodeList))continue;foreach($episodeList as $episodeRow){
+        $canonicalSeason=isset($episodeRow['season'])?(string)$episodeRow['season']:(string)$seasonKey;
+        $canonicalEpisodes[$canonicalSeason][]=$episodeRow;
+    }}
+    $data['episodes']=(object)$canonicalEpisodes;
 
     if (!isset($data['info']) || !is_array($data['info'])) $data['info'] = [];
     $data['info']['name'] = $series['stream_name'];

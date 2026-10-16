@@ -14,6 +14,7 @@ if(($_SERVER['REQUEST_METHOD']??'GET')==='POST'){
  }catch(Throwable $e){if($pdo->inTransaction())$pdo->rollBack();$notice=$e instanceof RuntimeException && !($e instanceof PDOException)?$e->getMessage():'Échec de sauvegarde : aucune modification appliquée.';}finally{if($locked)panel_import_lock($pdo,$fid,true);}
 }
 $settings=$row?content_settings($pdo,$id):[];
+// Sources/backup policy is managed separately; existing content save remains unchanged.
 $q=$pdo->prepare('SELECT * FROM categories WHERE COALESCE(fournisseur_id,0)=? AND content_type=? ORDER BY category_name');$q->execute([$fid,$kind==='episode'?'series':$kind]);$cats=$q->fetchAll();
 $sourceProviders=$personal?[]:$pdo->query('SELECT id,nom,type FROM fournisseurs WHERE active=1 ORDER BY nom')->fetchAll();
 $parents=$personal?$pdo->query("SELECT stream_id,stream_name FROM streams WHERE fournisseur_id=0 AND stream_type='series' ORDER BY stream_name")->fetchAll():[];
@@ -51,6 +52,7 @@ v2_begin(($row?'Modifier':'Créer').' · '.($personal?'contenu personnel':'conte
 <label class="ce-wide">Synopsis<textarea name="plot" rows="6"><?=v2_h($ceValue('plot',$row['vod_plot']??''))?></textarea></label>
 </div></div>
 <div class="ce-panel" id="ce-panel-sources"><h3>Sources</h3><p class="ce-intro"><?=v2_h($personal?'Renseignez le flux de lecture de ce contenu.':'Conservez la source fournisseur ou définissez un remplacement.')?></p><div class="ce-fields">
+<?php if($row && in_array($kind,['live','movie','series','episode'],true)):?><p class="ce-wide"><a href="sources_manage.php?id=<?=$id?>">Sources &amp; Backups : priorités, remplacement et liens multiples</a></p><?php endif?>
 <label class="ce-wide"><?=v2_h($personal?'URL du flux (vide pour une fiche série)':'URL de remplacement (vide = source fournisseur)')?><input name="source" value="<?=v2_h($ceValue('source',$personal?($row['direct_source']??''):($settings['source_override']??'')))?>"></label>
 <?php if(!$personal):?><label>Fournisseur de remplacement<select name="source_provider"><option value="0">Source originale / URL directe</option><?php foreach($sourceProviders as $f):?><option value="<?=(int)$f['id']?>" <?=$ceValue('source_provider',$settings['source_provider']??0)==(string)$f['id']?'selected':''?>><?=v2_h($f['nom'].' · '.$f['type'])?></option><?php endforeach?></select></label><label>ID distant / URL M3U du remplacement<input name="source_remote" maxlength="255" value="<?=v2_h($ceValue('source_remote',$settings['source_remote']??''))?>"></label><?php endif?>
 <label>Conteneur<input name="extension" value="<?=v2_h($ceValue('extension',$row['container_extension']??''))?>" placeholder="mp4, mkv, ts, m3u8…"></label>

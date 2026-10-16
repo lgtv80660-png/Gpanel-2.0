@@ -309,6 +309,7 @@ if ($mode === 'streams') {
                                 </td>
                                 <td><span class="badge-type"><?= $s['stream_type'] ?></span></td>
                                 <td class="text-end">
+                                    <?php if ($s['stream_type'] === 'live'): ?><a class="btn btn-sm btn-outline-info" href="sources_manage.php?id=<?=(int)$s['stream_id']?>">Sources &amp; Backups</a><?php endif; ?>
                                     <button class="btn btn-sm btn-outline-primary me-1" onclick="previewStream('<?= $s['stream_id'] ?>', '<?= $s['stream_type'] ?>', '<?= addslashes(htmlspecialchars($s['stream_name'])) ?>', '<?= htmlspecialchars((string)($s['container_extension'] ?? ''), ENT_QUOTES) ?>')" title="Prévisualiser la chaîne">
                                         <i class="fas fa-play"></i>
                                     </button>

@@ -1,10 +1,11 @@
 <?php
+require_once __DIR__.'/panel_state_path.php';
 // Cache upstream metadata only, never per-client URLs or authentication responses.
 function panel_series_cache_path(string $identity): ?string {
     $dir = getenv('PANEL_STATE_DIR');
     $real = $dir ? realpath($dir) : false;
-    $web = realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: realpath(__DIR__);
-    if (!$real || !is_writable($real) || strncmp(strtolower($real.DIRECTORY_SEPARATOR), strtolower($web.DIRECTORY_SEPARATOR), strlen($web.DIRECTORY_SEPARATOR)) === 0) return null;
+    $web = !empty($_SERVER['DOCUMENT_ROOT']) ? (realpath($_SERVER['DOCUMENT_ROOT']) ?: realpath(__DIR__)) : realpath(__DIR__);
+    if (!$real || is_link($dir) || !panel_state_outside($real,$web) || !panel_state_writable($real)) return null;
     return $real.DIRECTORY_SEPARATOR.'series-'.hash('sha256', $identity).'.json';
 }
 function panel_series_metadata(string $identity, callable $fetch): ?array {

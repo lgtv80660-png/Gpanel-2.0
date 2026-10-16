@@ -26,48 +26,9 @@ require_once __DIR__.'/panel_packs.php';
 $packAccess=packs_access($pdo,(int)$packClient['id']);
 if(!isset($packAccess[(int)$stream_id]) || $packAccess[(int)$stream_id]['stream_type']!=='episode') {http_response_code(403);exit('Content not authorized');}
 
-$stmt = $pdo->prepare("SELECT s.*, COALESCE(f.type,'m3u') AS type, f.url_base, f.user, f.pass
-                       FROM streams s
-                       LEFT JOIN fournisseurs f ON s.fournisseur_id = f.id
-                       INNER JOIN categories c ON s.category_id = c.category_id
-                       WHERE s.stream_id = ? AND s.stream_type = 'episode' AND s.visible = 1 AND c.visible = 1 AND (f.active = 1 OR s.fournisseur_id = 0)
-                       LIMIT 1");
-$stmt->execute([$stream_id]);
-$data = $stmt->fetch(PDO::FETCH_ASSOC);
-if ($data) {require_once __DIR__.'/panel_content.php'; try{$data=content_playback($pdo,$data);}catch(Throwable $e){$data=false;} if ($data && !content_episode_allowed($pdo,(int)$data['stream_id'])) $data=false;}
-
-if (!$data) {
-    http_response_code(404);
-    exit('Episode not found');
-}
-
-$extension = strtolower(trim((string)($data['container_extension'] ?? '')));
-$extension = preg_replace('/[^a-z0-9]/i', '', $extension);
-if ($extension === '') $extension = $requested_extension ?: 'mp4';
-
-if ($data['type'] === 'xtream') {
-    $base = rtrim($data['url_base'], '/');
-    $url_finale = $base . '/series/'
-        . rawurlencode((string)$data['user']) . '/'
-        . rawurlencode((string)$data['pass']) . '/'
-        . rawurlencode((string)$data['direct_source']) . '.'
-        . $extension;
-} elseif ($data['type'] === 'm3u') {
-    $url_finale = $data['direct_source'];
-} else {
-    http_response_code(502);
-    exit('Unsupported provider type');
-}
-
-if (!$url_finale) {
-    http_response_code(502);
-    exit('Stream URL unavailable');
-}
-
-// Do NOT proxy the media through PHP. Xtream clients need the provider's
-// native response headers, redirects and Range/206 handling.
+$method=$_SERVER['REQUEST_METHOD']??'GET';
+if(!in_array($method,['GET','HEAD'],true)){http_response_code(405);header('Allow: GET, HEAD, OPTIONS');exit;}
+require_once __DIR__.'/panel_vod_session.php';
 require_once __DIR__.'/panel_operations.php';
 ops_playback_hook($pdo,(int)$packClient['id'],(int)$stream_id,'episode');
-header('Location: ' . $url_finale, true, 302);
-exit;
-?>
+vod_session_open($pdo,$packClient,(int)$stream_id,'episode',$requested_extension);

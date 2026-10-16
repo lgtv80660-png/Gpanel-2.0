@@ -32,7 +32,7 @@ function movie_resolve(PDO $pdo, $id, $backup = null) {
     $q->execute([$id]); $row=$q->fetch(PDO::FETCH_ASSOC); if ($row) {require_once __DIR__.'/panel_content.php'; try{$row=content_playback($pdo,$row);}catch(Throwable $e){return false;}} return $row;
 }
 function movie_confirm(PDO $pdo, array $roles): void {
-    if (count($roles)<2 || count($roles)>100 || count(array_filter($roles,fn($r)=>$r==='primary'))!==1) throw new RuntimeException('Choisir au moins deux films et exactement un principal.');
+    if (count($roles)<2 || count(array_filter($roles,fn($r)=>$r==='primary'))!==1) throw new RuntimeException('Choisir au moins deux films et exactement un principal.');
     foreach ($roles as $id=>$role) if (!ctype_digit((string)$id) || !in_array($role,['primary','backup','disabled'],true)) throw new RuntimeException('Choix invalide.');
     $pdo->beginTransaction();
     try {
@@ -45,6 +45,8 @@ function movie_confirm(PDO $pdo, array $roles): void {
         if ($groups) {
             $gid=$groups[0]; $q=$pdo->prepare('SELECT stream_id FROM movie_group_sources WHERE group_id=?'); $q->execute([$gid]);
             foreach ($q->fetchAll(PDO::FETCH_COLUMN) as $existing) if (!isset($roles[$existing])) throw new RuntimeException('Inclure toutes les sources du groupe existant.');
+            $primaryQ=$pdo->prepare("SELECT stream_id FROM movie_group_sources WHERE group_id=? AND role='primary'");$primaryQ->execute([$gid]);$oldPrimary=$primaryQ->fetchColumn();
+            if($oldPrimary!==false && ($roles[$oldPrimary]??'')!=='primary')throw new RuntimeException('ID public du groupe conservé : changer la priorité de lecture dans Sources & Backups.');
         } else { $q=$pdo->prepare('INSERT INTO movie_groups(label) VALUES (?)'); $q->execute([$rows[0]['stream_name']]); $gid=$pdo->lastInsertId(); }
         $del=$pdo->prepare('DELETE FROM movie_group_sources WHERE group_id=?'); $del->execute([$gid]);
         $ins=$pdo->prepare('INSERT INTO movie_group_sources(stream_id,group_id,role) VALUES (?,?,?)'); foreach($roles as $id=>$role) $ins->execute([$id,$gid,$role]);

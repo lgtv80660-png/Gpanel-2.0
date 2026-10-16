@@ -1,0 +1,42 @@
+<?php
+require __DIR__.'/../panel_vod_relay.php';$checks=0;
+function vt(bool $ok,string $why):void{global $checks;$checks++;if(!$ok)throw new RuntimeException($why);}
+$dns=fn($host)=>['93.184.216.34'];$rows=[['type'=>'m3u','direct_source'=>'https://one.example/bad'],['type'=>'m3u','direct_source'=>'https://two.example/good']];
+$payload=str_repeat("\0video-fixture\xff",100);$hits=[];$events=[];
+$emit=function($event,$value)use(&$events){$events[]=[$event,$value];};
+$transport=function($target,$method,$range,$headers,$bytes)use(&$hits,$payload){
+    $hits[]=$target['url'];$bad=str_ends_with($target['url'],'/bad');$status=$bad?503:200;$h=['content-type'=>'video/mp4','content-length'=>(string)strlen($payload),'location'=>'https://SECRET.example','set-cookie'=>'HOST_SECRET'];
+    $headers($status,$h);if($method==='GET')$bytes($bad?'HOST_SECRET':$payload);return ['status'=>$status,'ok'=>true,'headers'=>$h];
+};
+$state=[];$r=vod_stream_rows($rows,'mp4','GET','',$state,$transport,$dns,$emit);
+vt($r['started']&&$r['index']===1&&count($hits)===2,'primary error falls back before bytes');
+vt($events[1][1]===$payload && !isset($events[0][1]['headers']['location']),'binary output with upstream headers suppressed');
+vt($state['pinned']&&$state['index']===1,'chosen file pinned in session');
+$hits=[];$events=[];vod_stream_rows($rows,'mp4','GET','',$state,$transport,$dns,$emit);vt(count($hits)===1&&str_contains($hits[0],'two.example'),'later request never returns to primary');
+$redirect=function($target,$method,$range,$headers,$bytes)use(&$hits,$payload){$hits[]=$target['host'];if($target['host']==='one.example')return ['status'=>302,'ok'=>true,'headers'=>['location'=>'https://cdn.example/file']];$headers(200,['content-type'=>'video/mp4']);$bytes($payload);return ['status'=>200,'ok'=>true,'headers'=>[]];};
+$hits=[];$state=[];$events=[];vod_stream_rows([$rows[0]],'mp4','GET','',$state,$redirect,$dns,$emit);vt($hits===['one.example','cdn.example'],'redirect revalidated at every host');
+$calls=0;$ssrf=function($target,$method,$range,$headers,$bytes)use(&$calls){$calls++;return ['status'=>302,'ok'=>true,'headers'=>['location'=>'http://169.254.169.254/secret']];};
+$state=[];$r=vod_stream_rows([$rows[0]],'mp4','GET','',$state,$ssrf,$dns,$emit);vt($r['status']===502&&$calls===1,'private redirect blocked before request');
+$calls=0;$state=[];$r=vod_stream_rows([$rows[0]],'mp4','GET','',$state,$transport,fn($h)=>['127.0.0.1'],$emit);vt($r['status']===502,'private initial DNS refused');
+$partial=function($target,$method,$range,$headers,$bytes)use(&$hits){$hits[]=$target['url'];$headers(200,['content-type'=>'video/mp4','content-length'=>'9999']);$bytes(str_repeat('v',1024));return ['status'=>200,'ok'=>false,'headers'=>[]];};
+$hits=[];$state=[];$events=[];$r=vod_stream_rows($rows,'mp4','GET','',$state,$partial,$dns,$emit);vt($r['started']&&!$r['ok']&&count($hits)===1,'partial video never splices backup');
+$failure=function($target,$method,$range,$headers,$bytes)use(&$hits){$hits[]=$target['url'];$headers(503,[]);return ['status'=>503,'ok'=>false,'headers'=>[]];};
+$hits=[];$events=[];$r=vod_stream_rows($rows,'mp4','GET','bytes=10-19',$state,$failure,$dns,$emit);vt(count($hits)===1&&$r['status']===502,'pinned seek failure never changes file');
+$state=[];$hits=[];$r=vod_stream_rows($rows,'mp4','GET','bytes=10-19',$state,$failure,$dns,$emit);vt(count($hits)===1,'unestablished nonzero seek never falls back');
+$rangeTransport=function($target,$method,$range,$headers,$bytes){$h=['content-type'=>'video/mp4','content-range'=>'bytes 10-19/100','content-length'=>'10'];$headers(206,$h);if($method==='GET')$bytes('0123456789');return ['status'=>206,'ok'=>true,'headers'=>$h];};
+$state=['pinned'=>true,'index'=>0];$events=[];$r=vod_stream_rows($rows,'mp4','GET','bytes=10-19',$state,$rangeTransport,$dns,$emit);vt($r['status']===206&&$events[1][1]==='0123456789','validated Range 206 forwarded');
+vt(vod_accept_headers(206,['content-type'=>'video/mp4','content-range'=>'bytes 0-9/100','content-length'=>'10'],[10,19])===null,'wrong Content-Range refused');
+$binarySlice=function($target,$method,$range,$headers,$bytes){$headers(206,['content-type'=>'video/mp4','content-range'=>'bytes 10-19/100','content-length'=>'10']);$bytes('[234567890');return ['status'=>206,'ok'=>true,'headers'=>[]];};
+$sliceState=['pinned'=>true,'index'=>0];$events=[];$slice=vod_stream_rows($rows,'mp4','GET','bytes=10-19',$sliceState,$binarySlice,$dns,$emit);vt($slice['status']===206&&$events[1][1]==='[234567890','nonzero binary slice is not misclassified as a document');
+vt(vod_accept_headers(200,['content-type'=>'video/mp4'],[10,19])===null,'ignored Range refused');
+foreach(['bytes=-','bytes=9-1','bytes=0-1,3-4','bytes=-0'] as $range){$state=[];$r=vod_stream_rows($rows,'mp4','GET',$range,$state,$transport,$dns,$emit);vt($r['status']===416,'invalid Range refused '.$range);}
+$head=[];$events=[];$r=vod_stream_rows($rows,'mp4','HEAD','',$head,$transport,$dns,$emit);vt($r['status']===200&&count($events)===1&&$head['index']===1,'HEAD fallback pins file without body');
+foreach(['text/html','application/json','application/vnd.apple.mpegurl'] as $type)vt(vod_accept_headers(200,['content-type'=>$type],null)===null,'non-video response refused '.$type);
+$manifest=function($target,$method,$range,$headers,$bytes){$headers(200,['content-type'=>'application/octet-stream']);foreach(str_split('#EXTM3U'."\nhttps://host/SECRET\n") as $byte)if(!$bytes($byte))break;return ['status'=>200,'ok'=>true,'headers'=>[]];};
+$state=[];$events=[];$r=vod_stream_rows([$rows[0]],'mp4','GET','',$state,$manifest,$dns,$emit);vt($r['status']===502&&$events===[],'split disguised manifest rejected before credential leakage');
+vt(vod_accept_headers(200,['content-type'=>'video/mp4','content-encoding'=>'gzip'],null)===null,'compressed response cannot corrupt Range identity');
+$state=['pinned'=>true,'index'=>0,'file_identity'=>['length'=>'200','etag'=>'version-1','modified'=>null]];$events=[];
+$r=vod_stream_rows($rows,'mp4','GET','bytes=10-19',$state,$rangeTransport,$dns,$emit);vt($r['status']===502&&$events===[],'changed upstream length or validator refuses pinned seek');
+$state=[];$r=vod_stream_rows($rows,'mp4','GET','',$state,$transport,$dns,function($event,$value){if($event==='headers')throw new RuntimeException('checkpoint failed');});
+vt($r['status']===502&&!$r['started'],'failed private checkpoint never emits a false successful body');
+echo "$checks VOD transport checks passed\n";

@@ -1,7 +1,7 @@
 <?php
 require __DIR__.'/../panel_series_cache.php';
 function check($ok, $name) { if (!$ok) throw new RuntimeException($name); echo "PASS $name\n"; }
-$dir = sys_get_temp_dir().DIRECTORY_SEPARATOR.'gpanel-cache-test-'.bin2hex(random_bytes(8));
+$dir = (getenv('GPANEL_TEST_TMP')?:sys_get_temp_dir()).DIRECTORY_SEPARATOR.'gpanel-cache-test-'.bin2hex(random_bytes(8));
 mkdir($dir);
 putenv('PANEL_STATE_DIR='.$dir);
 $calls = 0;

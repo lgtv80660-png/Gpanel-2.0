@@ -27,12 +27,12 @@ $method = $_SERVER['REQUEST_METHOD'];
 if (!in_array($method, ['GET','HEAD'], true)) { http_response_code(405); header('Allow: GET, HEAD, OPTIONS'); exit; }
 $range = $_SERVER['HTTP_RANGE'] ?? '';
 if ($range !== '' && !preg_match('/^bytes=\d*-\d*$/D', $range)) { http_response_code(416); exit; }
-$rows = vod_candidates($pdo, $stream_id, isset($_GET['backup_stream']) ? (string)$_GET['backup_stream'] : null);
-if (!$rows) { http_response_code(404); exit('Movie not found'); }
+// Selection is retained in a private, short-lived opaque session.
+require_once __DIR__.'/panel_vod_session.php';
 header('Cache-Control: private, no-store');
 header('X-Content-Type-Options: nosniff');
 header('Access-Control-Expose-Headers: Content-Length, Content-Range, Accept-Ranges');
 while (ob_get_level()) ob_end_clean();
 require_once __DIR__.'/panel_operations.php';
 ops_playback_hook($pdo,(int)$packClient['id'],(int)$stream_id,'movie');
-vod_relay($rows, $requested_extension, $method, $range);
+vod_session_open($pdo,$packClient,(int)$stream_id,'movie',$requested_extension,isset($_GET['backup_stream'])?(int)$_GET['backup_stream']:null);

@@ -9,7 +9,7 @@ RUN apt-get update \
 
 WORKDIR /var/www/html
 COPY *.php .htaccess ./
-COPY movie_groups.sql content_v2.sql packs.sql operations.sql /var/www/html/
+COPY movie_groups.sql content_v2.sql packs.sql operations.sql sources.sql vod_sources.sql /var/www/html/
 COPY assets/ ./assets/
 COPY mysql.sql /opt/gpanel/mysql.sql
 COPY deploy/ /opt/gpanel/deploy/
@@ -17,9 +17,9 @@ COPY deploy/apache.conf /etc/apache2/sites-available/000-default.conf
 COPY deploy/php.ini /usr/local/etc/php/conf.d/gpanel.ini
 RUN sed -i 's/\r$//' /opt/gpanel/deploy/start.sh \
     && chmod +x /opt/gpanel/deploy/start.sh \
-    && mkdir -p /var/lib/gpanel/state \
+    && mkdir -p /var/lib/gpanel/state /var/lib/gpanel/source-sessions \
     && chown -R www-data:www-data /var/lib/gpanel
 
-ENV PORT=8080 PANEL_STATE_DIR=/var/lib/gpanel/state
+ENV PORT=8080 PANEL_STATE_DIR=/var/lib/gpanel/state PANEL_SOURCES_STATE_DIR=/var/lib/gpanel/source-sessions
 EXPOSE 8080
 CMD ["/opt/gpanel/deploy/start.sh"]
