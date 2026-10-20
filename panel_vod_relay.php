@@ -75,13 +75,35 @@ function vod_http_hop(array $target,string $method,string $range,callable $onHea
         },
         CURLOPT_WRITEFUNCTION=>function($ch,$bytes)use(&$status,$onBytes){if($status>=300&&$status<400)return 0;return $onBytes($bytes)?strlen($bytes):0;}
     ]);
-    $ok=curl_exec($ch)!==false;curl_close($ch);return ['ok'=>$ok,'status'=>$status,'headers'=>$headers];
+    $ok=curl_exec($ch)!==false;curl_close($ch);
+    if($method==='HEAD'&&in_array($status,[0,404,405,501],true)){
+        // Some Xtream gateways close HEAD instead of returning their CDN redirect.
+        // Probe one byte with GET, expose metadata only, and never emit its body.
+        $accepted=false;
+        $r=vod_http_hop($target,'GET',$range!==''?$range:'bytes=0-0',function($code,$values)use($range,$onHeaders,&$accepted){
+            if($range===''&&vod_accept_headers($code,$values,[0,0])){
+                preg_match('#/(\d+)$#',$values['content-range'],$m);
+                $values['content-length']=$m[1];unset($values['content-range']);$code=200;
+            }
+            $accepted=vod_accept_headers($code,$values,vod_range($range))!==null;
+            $onHeaders($code,$values);
+        },fn($bytes)=>false);
+        if($accepted)$r['ok']=true; // Validated headers suffice for HEAD; body abort is intentional.
+        return $r;
+    }
+    return ['ok'=>$ok,'status'=>$status,'headers'=>$headers];
 }
 function vod_stream_rows(array $rows,string $extension,string $method,string $range,array &$state,?callable $transport=null,?callable $dns=null,?callable $emit=null): array {
     if(!in_array($method,['GET','HEAD'],true))return ['status'=>405,'started'=>false];
     try{$parsed=vod_range($range);}catch(Throwable $e){return ['status'=>416,'started'=>false];}
     $emit??=function($event,$value){if($event==='headers'){http_response_code($value['status']);foreach($value['headers'] as $k=>$v)header($k.': '.$v);}else{echo $value;flush();}};
     $transport??='vod_http_hop';$started=false;$index=(int)($state['index']??0);
+    $upstreamRange=$range;
+    if($parsed&&$parsed[0]!==null&&$parsed[1]===null&&isset($state['file_identity']['length'])&&preg_match('/^[0-9]{1,18}$/D',(string)$state['file_identity']['length'])){
+        $length=(int)$state['file_identity']['length'];
+        if($parsed[0]>=$length)return ['status'=>416,'started'=>false];
+        $upstreamRange='bytes='.$parsed[0].'-'.($length-1);
+    }
     $locked=!empty($state['pinned']) || ($parsed && $parsed[0]!==0);
     $indices=$locked?[$index]:array_keys($rows);
     foreach($indices as $i){
@@ -92,6 +114,11 @@ function vod_stream_rows(array $rows,string $extension,string $method,string $ra
             try {
                 $target=sources_url($url,$dns,vod_upstream_ports());if(isset($visited[$url]))break;$visited[$url]=true;
                 $onHeaders=function($code,$values)use(&$accepted,&$status,&$headers,&$identity,&$state,$parsed){
+                    // A complete 200 representation exactly satisfies an open range from zero.
+                    // Other ignored ranges are rejected: no bytes are ever relabelled as a seek.
+                    if($code===200&&$parsed===[0,null]&&!isset($values['content-range'])&&preg_match('/^[0-9]{1,18}$/D',$values['content-length']??'')&&(int)$values['content-length']>0){
+                        $code=206;$values['content-range']='bytes 0-'.((int)$values['content-length']-1).'/'.$values['content-length'];
+                    }
                     $status=$code;$headers=$values;$accepted=vod_accept_headers($code,$values,$parsed);
                     $length=$values['content-length']??null;if(isset($values['content-range'])&&preg_match('#/(\d+)$#',$values['content-range'],$m))$length=$m[1];
                     $identity=['length'=>$length,'etag'=>$values['etag']??null,'modified'=>$values['last-modified']??null];
@@ -106,7 +133,7 @@ function vod_stream_rows(array $rows,string $extension,string $method,string $ra
                     if(!$started){$state['index']=$i;$state['pinned']=true;$state['file_identity']=$identity;$emit('headers',['status'=>$status,'headers'=>$accepted]);$started=true;}
                     $emit('bytes',$bytes);return true;
                 };
-                $r=$transport($target,$method,$range,$onHeaders,$onBytes);
+                $r=$transport($target,$method,$upstreamRange,$onHeaders,$onBytes);
                 if(!$started && $method==='GET' && !empty($r['ok']) && $preface!=='')$onBytes('',true);
                 if($started)return ['status'=>$status,'started'=>true,'ok'=>!empty($r['ok']),'index'=>$i];
                 if(in_array($r['status'],[301,302,303,307,308],true)){

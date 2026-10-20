@@ -66,3 +66,24 @@ Transport exceptions log only fixed diagnostic codes and hop/start metadata.
 Tests cover explicitly allowed/blocked redirect ports, loopback, metadata,
 IPv6 loopback, internal hostnames, userinfo, file URLs, mixed private DNS and
 invalid configuration. No database mutation or frontend change is needed.
+
+## Real transport compatibility
+
+The real CDN ignored `Range: bytes=0-`, returning a complete 200 representation;
+the strict relay rejected it with 502. A complete response with a valid known
+length now satisfies only an open range starting at zero, with equivalent 206
+metadata. Ignored bounded or nonzero ranges are still rejected. After pinning a
+file, open seeks use its known length to send an explicit end to the provider;
+the returned range and file identity must still match exactly.
+
+The gateway closed HEAD requests and its CDN returned 404 for HEAD while GET
+worked. For HEAD statuses 0/404/405/501, a one-byte GET discovers redirects or
+validates metadata without emitting a media body. A partial one-byte response is
+translated into full-file HEAD metadata. Authorization, source pinning and
+credential secrecy remain unchanged.
+
+Before deployment, a temporary Linux copy of this final transport returned HEAD
+200, open-range 206 and open-seek 206 for both real contents, with consistent
+total lengths. Local binary HTTP tests cover empty HEAD replies, 404/405 HEAD,
+one-byte metadata probing and ignored initial open ranges. Unit tests reject
+ignored bounded/nonzero ranges and seeks beyond the pinned file length.

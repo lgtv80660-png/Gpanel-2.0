@@ -39,4 +39,14 @@ $state=['pinned'=>true,'index'=>0,'file_identity'=>['length'=>'200','etag'=>'ver
 $r=vod_stream_rows($rows,'mp4','GET','bytes=10-19',$state,$rangeTransport,$dns,$emit);vt($r['status']===502&&$events===[],'changed upstream length or validator refuses pinned seek');
 $state=[];$r=vod_stream_rows($rows,'mp4','GET','',$state,$transport,$dns,function($event,$value){if($event==='headers')throw new RuntimeException('checkpoint failed');});
 vt($r['status']===502&&!$r['started'],'failed private checkpoint never emits a false successful body');
+$state=[];$events=[];$r=vod_stream_rows([$rows[1]],'mp4','GET','bytes=0-',$state,$transport,$dns,$emit);
+vt($r['status']===206&&$events[1][1]===$payload&&$events[0][1]['headers']['Content-Range']==='bytes 0-'.(strlen($payload)-1).'/'.strlen($payload),'complete 200 response safely normalized only for open zero range');
+$state=[];$events=[];$r=vod_stream_rows([$rows[1]],'mp4','GET','bytes=0-9',$state,$transport,$dns,$emit);
+vt($r['status']===502&&$events===[],'ignored bounded range still rejected');
+$observed='';$tail=function($target,$method,$range,$headers,$bytes)use(&$observed){$observed=$range;$headers(206,['content-type'=>'video/mp4','content-length'=>'90','content-range'=>'bytes 10-99/100']);$bytes(str_repeat('x',90));return ['ok'=>true,'status'=>206,'headers'=>[]];};
+$state=['pinned'=>true,'index'=>0,'file_identity'=>['length'=>'100','etag'=>null,'modified'=>null]];$events=[];
+$r=vod_stream_rows([$rows[1]],'mp4','GET','bytes=10-',$state,$tail,$dns,$emit);
+vt($r['status']===206&&$observed==='bytes=10-99','open seek uses pinned length to request explicit upstream end');
+$events=[];$r=vod_stream_rows([$rows[1]],'mp4','GET','bytes=100-',$state,$tail,$dns,$emit);vt($r['status']===416&&$events===[],'seek beyond known file end rejected');
+$state=[];$events=[];$r=vod_stream_rows([$rows[1]],'mp4','GET','bytes=10-',$state,$transport,$dns,$emit);vt($r['status']===502&&$events===[],'ignored nonzero open range never relabelled as seek');
 echo "$checks VOD transport checks passed\n";

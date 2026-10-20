@@ -1,5 +1,5 @@
 """Binary proxy tests: loopback endpoints only; no real providers or database."""
-import argparse, http.server, threading, tempfile, subprocess, shutil, time
+import argparse, http.server, re, threading, tempfile, subprocess, shutil, time
 from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
@@ -8,7 +8,13 @@ ap=argparse.ArgumentParser();ap.add_argument('--php',required=True);ap.add_argum
 hits=[]; payload=b'\x00fixture-video-bytes\xff'
 class Upstream(http.server.BaseHTTPRequestHandler):
  def log_message(self,*a):pass
- def do_HEAD(self):self.do_GET()
+ def do_HEAD(self):
+  if self.path in ['/nohead','/emptyhead','/head404']:
+   hits.append(self.path)
+   if self.path in ['/nohead','/head404']:self.send_response(405 if self.path=='/nohead' else 404);self.end_headers()
+   else:self.close_connection=True
+   return
+  self.do_GET()
  def do_GET(self):
   hits.append(self.path)
   if self.path=='/bad':self.send_response(503);self.end_headers();return
@@ -18,9 +24,12 @@ class Upstream(http.server.BaseHTTPRequestHandler):
   if self.path=='/html':self.send_response(200);self.send_header('Content-Type','text/html');self.end_headers();self.wfile.write(b'error');return
   if self.path=='/partial':self.send_response(200);self.send_header('Content-Type','video/mp4');self.send_header('Content-Length','9999');self.end_headers();self.wfile.write(b'v'*1024);return
   data=payload;status=200
-  if self.headers.get('Range')=='bytes=2-5':data=payload[2:6];status=206
+  content_range=None
+  m=re.fullmatch(r'bytes=(\d+)-(\d+)',self.headers.get('Range',''))
+  if m:
+   start,end=map(int,m.groups());end=min(end,len(payload)-1);data=payload[start:end+1];status=206;content_range=f'bytes {start}-{end}/{len(payload)}'
   self.send_response(status);self.send_header('Content-Type','video/mp4');self.send_header('Content-Length',str(len(data)))
-  if status==206:self.send_header('Content-Range',f'bytes 2-5/{len(payload)}')
+  if status==206:self.send_header('Content-Range',content_range)
   self.send_header('Location','http://secret:password@fixture.invalid');self.send_header('Set-Cookie','provider=secret');self.end_headers()
   if self.command!='HEAD':self.wfile.write(data)
 up=http.server.ThreadingHTTPServer(('127.0.0.1',0),Upstream);threading.Thread(target=up.serve_forever,daemon=True).start()
@@ -63,6 +72,13 @@ try:
  print('PASS upstream redirect loop bounded before backup')
  status,data,headers=request('bad',method='HEAD');assert status==200 and data==b'' and headers['Content-Length']==str(len(payload))
  print('PASS HEAD falls back without response body')
+ for mode in ['nohead','emptyhead','head404']:
+  hits.clear();status,data,headers=request(mode,method='HEAD')
+  assert status==200 and data==b'' and headers['Content-Length']==str(len(payload)) and hits==['/'+mode,'/'+mode],(mode,status,hits)
+  print('PASS HEAD uses one-byte GET metadata when gateway '+mode)
+ status,data,headers=request('ok',headers={'Range':'bytes=0-'})
+ assert status==206 and data==payload and headers['Content-Range']==f'bytes 0-{len(payload)-1}/{len(payload)}'
+ print('PASS complete 200 safely satisfies open Range from zero')
  hits.clear()
  from http.client import IncompleteRead
  try:request('partial');raise AssertionError('truncation expected')
