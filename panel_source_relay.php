@@ -43,17 +43,51 @@ function sources_relay_dir(): string {
 function sources_relay_session(string $token,callable $operation,bool $create=false) {
  if(!preg_match('/^[a-f0-9]{64}$/D',$token))throw new RuntimeException('Invalid session');
  $dir=sources_relay_dir();
- if($create && count(glob($dir.DIRECTORY_SEPARATOR.'*.json')?:[])>=1000)throw new RuntimeException('Session storage capacity reached');
- $path=$dir.DIRECTORY_SEPARATOR.$token.'.json';if(is_link($path)||(!$create&&!is_file($path)))throw new RuntimeException('Session unavailable');
- $f=fopen($path,$create?'x+':'r+');if(!$f)throw new RuntimeException('Session unavailable');@chmod($path,0600);
+ // Serialize admission only; never hold this lock during a media transfer.
+ $admission=null;$f=null;$created=false;$complete=false;
  try {
+ if($create){
+  $lock=$dir.DIRECTORY_SEPARATOR.'.admission.lock';
+  if(is_link($lock))throw new RuntimeException('Session unavailable');
+  $admission=@fopen($lock,'c');
+  if(!$admission||!flock($admission,LOCK_EX|LOCK_NB))throw new RuntimeException('Session busy');
+  @chmod($lock,0600);
+  $files=glob($dir.DIRECTORY_SEPARATOR.'*.json');
+  if($files===false)throw new RuntimeException('Session unavailable');
+  if(count($files)>=1000){
+   foreach($files as $file){
+    if(!preg_match('/^[a-f0-9]{64}\.json$/D',basename($file))||is_link($file))continue;
+    $expired=@fopen($file,'r+');if(!$expired)continue;
+    try {
+     // A locked session may be streaming: leave it alone even past its expiry.
+     if(!flock($expired,LOCK_EX|LOCK_NB))continue;
+     $state=json_decode(stream_get_contents($expired,2097152),true);
+     if(is_array($state)&&isset($state['expires'])&&is_int($state['expires'])&&$state['expires']<=time()){
+      if(!@unlink($file))throw new RuntimeException('State storage failed');
+     }
+    }finally{fclose($expired);}
+   }
+   $files=glob($dir.DIRECTORY_SEPARATOR.'*.json');
+   if($files===false)throw new RuntimeException('Session unavailable');
+   if(count($files)>=1000)throw new RuntimeException('Session storage capacity reached');
+  }
+ }
+ $path=$dir.DIRECTORY_SEPARATOR.$token.'.json';if(is_link($path)||(!$create&&!is_file($path)))throw new RuntimeException('Session unavailable');
+ $f=@fopen($path,$create?'x+':'r+');if(!$f)throw new RuntimeException('Session unavailable');$created=$create;@chmod($path,0600);
   if(!flock($f,LOCK_EX|LOCK_NB))throw new RuntimeException('Session busy');
   $raw=stream_get_contents($f,2097152);$state=$create?[]:json_decode($raw,true);
-  if(!is_array($state)||(!$create&&($state['expires']??0)<time()))throw new RuntimeException('Session expired');
+  if(!is_array($state)||(!$create&&($state['expires']??0)<=time()))throw new RuntimeException('Session expired');
   $persist=function()use(&$state,$f){$encoded=json_encode($state,JSON_THROW_ON_ERROR);if(strlen($encoded)>2097152)throw new RuntimeException('Session size limit');
    rewind($f);if(!ftruncate($f,0)||fwrite($f,$encoded)!==strlen($encoded))throw new RuntimeException('State storage failed');if(!fflush($f))throw new RuntimeException('State storage failed');};
-  $result=$operation($state,$persist);$persist();return $result;
- }finally{flock($f,LOCK_UN);fclose($f);}
+  $result=$operation($state,$persist);$persist();$complete=true;return $result;
+ }finally{
+  if(is_resource($f)){
+   // Failed initial writes must not permanently consume admission slots.
+   if($created&&!$complete)@unlink($path);
+   flock($f,LOCK_UN);fclose($f);
+  }
+  if(is_resource($admission)){flock($admission,LOCK_UN);fclose($admission);}
+ }
 }
 function sources_relay_href(string $token,int $generation,string $resource='root'): string {
  return '/live_source_media.php?s='.$token.'&g='.$generation.'&r='.$resource;

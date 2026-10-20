@@ -21,7 +21,7 @@ def run(name,cmd,timeout=90):
 
 for file in sorted(root.rglob('*.php')):
     if 'test-results' not in file.parts:run('lint '+str(file.relative_to(root)),php+['-l',str(file)])
-for file in ['sources_backups.php','sources_suggestions.php','source_relay.php','vod_sources.php','vod_transport.php','movie_groups_smoke.php','content_v2.php','import_v2.php','import_selective.php','series_cache.php','revalidation.php']:
+for file in ['sources_backups.php','sources_suggestions.php','source_relay.php','session_capacity.php','vod_sources.php','vod_transport.php','movie_groups_smoke.php','content_v2.php','import_v2.php','import_selective.php','series_cache.php','revalidation.php']:
     run(file,php+[str(root/'tests'/file)])
 for file in ['sources-backups.js','vod-sources.js']:
     run('JavaScript syntax '+file,['node','--check',str(root/'assets'/file)])
@@ -29,7 +29,7 @@ run('sources migration PLAN',php+['migrate_sources.php'])
 run('VOD migration PLAN',php+['migrate_vod_sources.php'])
 if args.http:
     import sys
-    for file in ['sources_http.py','full_update_http.py','vod_proxy.py','run_regression.py']:
+    for file in ['session_concurrency.py','sources_http.py','full_update_http.py','vod_proxy.py','run_regression.py']:
         run(file,[sys.executable,str(root/'tests'/file),'--php',args.php,'--ext',args.ext],180)
 (out/'validation.txt').write_text('G-PANEL 2.0 FULL UPDATE — local fixtures, no real playback\n'+''.join(lines),encoding='utf-8')
 (out/'results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')

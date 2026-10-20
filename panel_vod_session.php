@@ -14,13 +14,23 @@ function vod_session_authorize(PDO $db,array $session): array {
 }
 function vod_session_open(PDO $db,array $client,int $id,string $kind,string $extension,?int $explicit=null): void {
     header('Cache-Control: private, no-store');header('Referrer-Policy: no-referrer');
+    $stage='range';
     try {
         $range=vod_range((string)($_SERVER['HTTP_RANGE']??''));
         if($range && $range[0]!==0){http_response_code(409);echo 'Open playback before seeking; reuse its opaque session URL.';return;}
-        $plan=vod_plan($db,$id,$explicit);if(!$plan['rows'] || $plan['kind']!==$kind){http_response_code(404);return;}
+        $stage='plan';$plan=vod_plan($db,$id,$explicit);if(!$plan['rows'] || $plan['kind']!==$kind){http_response_code(404);return;}
+        $stage='token';
         $token=bin2hex(random_bytes(32));
-        sources_relay_session($token,function(&$s)use($client,$id,$kind,$extension,$explicit,$plan){$s=['media_kind'=>'vod','client_id'=>(int)$client['id'],'credential_hash'=>hash('sha256',$client['username']."\0".$client['password']),
+        $stage='storage';sources_relay_session($token,function(&$s)use($client,$id,$kind,$extension,$explicit,$plan){$s=['media_kind'=>'vod','client_id'=>(int)$client['id'],'credential_hash'=>hash('sha256',$client['username']."\0".$client['password']),
             'stream_id'=>$id,'kind'=>$kind,'extension'=>$extension,'explicit'=>$explicit,'revision'=>$plan['revision'],'expires'=>time()+21600,'transfer'=>[]];},true);
         header('Location: /vod_source_media.php?s='.$token,true,307);
-    }catch(Throwable $e){http_response_code(503);echo 'VOD session unavailable';}
+    }catch(Throwable $e){
+        // Only fixed reason codes are logged; exception text/SQL can contain secrets.
+        $reasons=['Private state directory required'=>'storage_unavailable','State directory must be outside web root'=>'storage_not_private',
+            'Session storage capacity reached'=>'storage_capacity','Session busy'=>'storage_busy','State storage failed'=>'storage_write',
+            'Session unavailable'=>'session_unavailable','Session size limit'=>'session_size'];
+        $reason=$stage==='storage'?($reasons[$e->getMessage()]??'storage_failure'):($e instanceof PDOException?'database_failure':'preparation_failure');
+        error_log('gpanel_vod_open '.json_encode(['stage'=>$stage,'reason'=>$reason,'content_id'=>$id,'kind'=>in_array($kind,['movie','episode'],true)?$kind:'unknown']));
+        http_response_code(503);if($reason==='storage_busy')header('Retry-After: 1');echo 'VOD session unavailable';
+    }
 }

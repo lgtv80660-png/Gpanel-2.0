@@ -39,7 +39,7 @@ try{
  sources_relay_session($token,function(&$state){$state['expires']=0;});
  relay_reject(fn()=>sources_relay_session($token,fn(&$s)=>null),'expired session rejected');
  putenv('PANEL_SOURCES_STATE_DIR='.__DIR__.'/..');relay_reject(fn()=>sources_relay_dir(),'state inside web root rejected');
-}finally{unlink($tmp.'/'.$token.'.json');rmdir($tmp);putenv('PANEL_SOURCES_STATE_DIR');}
+}finally{unlink($tmp.'/'.$token.'.json');@unlink($tmp.'/.admission.lock');rmdir($tmp);putenv('PANEL_SOURCES_STATE_DIR');}
 $fresh=fn()=>['state'=>sources_failover($plan,[],'start',100),'plan'=>$plan,'resources'=>[]];
 $s=$fresh();
 $r=sources_relay_resource($s,$token,0,'root',$transport,$dns,100);
