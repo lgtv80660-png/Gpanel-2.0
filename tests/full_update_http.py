@@ -33,7 +33,7 @@ function fixture_vod_hop($target,$method,$range,$headers,$bytes){
 }
 '''
 # .example destinations receive synthetic public DNS only in this disposable copy.
-relay=relay.replace("$target=sources_url($url,$dns);", "$target=sources_url($url,$dns??fn($h)=>['93.184.216.34']);")
+relay=relay.replace("$target=sources_url($url,$dns,vod_upstream_ports());", "$target=sources_url($url,$dns??fn($h)=>['93.184.216.34'],vod_upstream_ports());")
 (web/'panel_vod_relay.php').write_text(relay,encoding='utf-8')
 with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
 base=f'http://127.0.0.1:{port}';env={**os.environ,'FIXTURE_DB':str(tmp/'fixture.sqlite'),'FIXTURE_HITS':str(tmp/'hits'),'PANEL_SOURCES_STATE_DIR':str(state)}

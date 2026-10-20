@@ -1,6 +1,18 @@
 <?php
 // Progressive VOD only. Redirects, credentials and source headers stay server-side.
 require_once __DIR__.'/panel_source_relay.php';
+// Operators can explicitly allow provider CDN ports; DNS/IP checks remain mandatory.
+// This setting applies only to progressive VOD, including each redirect hop.
+function vod_upstream_ports(): array {
+    $ports=[80,443];$raw=getenv('PANEL_VOD_UPSTREAM_PORTS');
+    if($raw===false||trim($raw)==='')return $ports;
+    foreach(explode(',',$raw) as $entry){
+        $entry=trim($entry);
+        if(!preg_match('/^[0-9]{1,5}$/D',$entry)||(int)$entry<1024||(int)$entry>65535)throw new RuntimeException('Invalid VOD upstream port configuration');
+        $ports[]=(int)$entry;
+    }
+    return array_values(array_unique($ports));
+}
 function vod_source_url(array $row,string $requested=''): ?string {
     if(($row['type']??'')==='xtream'){
         $ext=preg_replace('/[^a-z0-9]/','',strtolower($row['container_extension']??($requested?:'mp4')))?:'mp4';
@@ -78,7 +90,7 @@ function vod_stream_rows(array $rows,string $extension,string $method,string $ra
         for($hop=0;$hop<4;$hop++){
             $accepted=null;$status=0;$headers=[];$first=true;$preface='';$identity=[];
             try {
-                $target=sources_url($url,$dns);if(isset($visited[$url]))break;$visited[$url]=true;
+                $target=sources_url($url,$dns,vod_upstream_ports());if(isset($visited[$url]))break;$visited[$url]=true;
                 $onHeaders=function($code,$values)use(&$accepted,&$status,&$headers,&$identity,&$state,$parsed){
                     $status=$code;$headers=$values;$accepted=vod_accept_headers($code,$values,$parsed);
                     $length=$values['content-length']??null;if(isset($values['content-range'])&&preg_match('#/(\d+)$#',$values['content-range'],$m))$length=$m[1];
@@ -103,7 +115,15 @@ function vod_stream_rows(array $rows,string $extension,string $method,string $ra
                 }
                 if($method==='HEAD' && !empty($r['ok']) && $accepted){$state['index']=$i;$state['pinned']=true;$state['file_identity']=$identity;$emit('headers',['status'=>$status,'headers'=>$accepted]);return ['status'=>$status,'started'=>false,'ok'=>true,'index'=>$i];}
                 if($r['status']===416)return ['status'=>416,'started'=>false];
-            }catch(Throwable $e){if($started)return ['status'=>$status,'started'=>true,'ok'=>false,'index'=>$i];}
+            }catch(Throwable $e){
+                // Exception text and destination URLs may contain credentials.
+                $reasons=['Invalid VOD upstream port configuration'=>'upstream_port_configuration',
+                    'Destination ou port non autorisé.'=>'destination_port_or_host',
+                    'Destination privée ou réservée refusée.'=>'destination_private_ip',
+                    'Destination non résolue.'=>'destination_dns'];
+                error_log('gpanel_vod_transport '.json_encode(['reason'=>$reasons[$e->getMessage()]??'destination_or_transport_failure','hop'=>$hop,'started'=>$started]));
+                if($started)return ['status'=>$status,'started'=>true,'ok'=>false,'index'=>$i];
+            }
             break;
         }
     }

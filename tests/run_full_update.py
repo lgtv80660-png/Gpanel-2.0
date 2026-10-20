@@ -21,7 +21,7 @@ def run(name,cmd,timeout=90):
 
 for file in sorted(root.rglob('*.php')):
     if 'test-results' not in file.parts:run('lint '+str(file.relative_to(root)),php+['-l',str(file)])
-for file in ['sources_backups.php','sources_suggestions.php','source_relay.php','session_capacity.php','vod_sources.php','vod_transport.php','movie_groups_smoke.php','content_v2.php','import_v2.php','import_selective.php','series_cache.php','revalidation.php']:
+for file in ['sources_backups.php','sources_suggestions.php','source_relay.php','session_capacity.php','vod_sources.php','vod_transport.php','vod_ports.php','movie_groups_smoke.php','content_v2.php','import_v2.php','import_selective.php','series_cache.php','revalidation.php']:
     run(file,php+[str(root/'tests'/file)])
 for file in ['sources-backups.js','vod-sources.js']:
     run('JavaScript syntax '+file,['node','--check',str(root/'assets'/file)])

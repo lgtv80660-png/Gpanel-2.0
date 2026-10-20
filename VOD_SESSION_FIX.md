@@ -45,3 +45,24 @@ The service currently has one replica and no mounted session volume. Session
 files survive requests within a deployment but capabilities do not survive a
 container replacement. This repair does not change that deployment behavior.
 Post-deployment real-media results are recorded in the delivered incident report.
+
+## Second confirmed blocker: provider CDN port
+
+After the session fix, both real routes returned 307 but media returned 502.
+The configured provider returned 302 to a public CDN on TCP port 22541. The
+destination validator allowed only 80/443 and rejected that redirect. A bounded
+diagnostic with the explicit CDN port allowed returned HTTP 206, video/mp4,
+65,536 bytes for each content.
+
+`PANEL_VOD_UPSTREAM_PORTS` now accepts comma-separated additional ports in
+1024..65535. Default behavior remains 80/443. Railway test is configured with
+the single additional port `22541`; the port and CDN host are not embedded in
+application code. Each redirect still validates the scheme, hostname, public
+DNS addresses and absence of userinfo, then pins DNS for the connection. Other
+ports and all private/reserved addresses remain blocked. The setting applies
+only to progressive VOD; Live and the default shared validator retain 80/443.
+Transport exceptions log only fixed diagnostic codes and hop/start metadata.
+
+Tests cover explicitly allowed/blocked redirect ports, loopback, metadata,
+IPv6 loopback, internal hostnames, userinfo, file URLs, mixed private DNS and
+invalid configuration. No database mutation or frontend change is needed.

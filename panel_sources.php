@@ -16,11 +16,11 @@ function sources_public_ip(string $ip): bool {
  }
  return filter_var($ip,FILTER_VALIDATE_IP,FILTER_FLAG_NO_PRIV_RANGE|FILTER_FLAG_NO_RES_RANGE)!==false;
 }
-function sources_url(string $raw, ?callable $resolve=null): array {
+function sources_url(string $raw, ?callable $resolve=null, array $allowedPorts=[80,443]): array {
  $url=trim($raw);$p=parse_url($url);
  if (!$p || strlen($url)>8192 || preg_match('/[\x00-\x20\x7f\\\\]/',$url) || preg_match('/%(?:0[0-9a-f]|1[0-9a-f]|7f)/i',$url) || !in_array(strtolower($p['scheme']??''),['http','https'],true) || empty($p['host']) || isset($p['user']) || isset($p['pass']) || isset($p['fragment'])) throw new RuntimeException('URL HTTP/HTTPS publique requise, sans userinfo ni fragment.');
  $host=strtolower(trim($p['host'],'[]'));$port=$p['port']??(strtolower($p['scheme'])==='https'?443:80);
- if (!in_array($port,[80,443],true) || str_ends_with($host,'.') || $host==='localhost' || preg_match('/\.(?:localhost|local|internal)$/i',$host)) throw new RuntimeException('Destination ou port non autorisé.');
+ if (!in_array($port,$allowedPorts,true) || str_ends_with($host,'.') || $host==='localhost' || preg_match('/\.(?:localhost|local|internal)$/i',$host)) throw new RuntimeException('Destination ou port non autorisé.');
  if (!filter_var($host,FILTER_VALIDATE_IP) && (!preg_match('/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/',$host) || !str_contains($host,'.') || preg_match('/^[0-9.]+$/',$host))) throw new RuntimeException('Nom de destination invalide.');
  $ips=filter_var($host,FILTER_VALIDATE_IP)?[$host]:($resolve?$resolve($host):array_merge(array_column(dns_get_record($host,DNS_A)?:[],'ip'),array_column(dns_get_record($host,DNS_AAAA)?:[],'ipv6')));
  if (!$ips) throw new RuntimeException('Destination non résolue.');
